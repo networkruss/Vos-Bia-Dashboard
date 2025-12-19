@@ -1,84 +1,81 @@
-// src/components/dashboard/FilterBar.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { RefreshCw, X } from 'lucide-react';
-import { format } from 'date-fns';
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { RefreshCw, X } from "lucide-react";
+import { format } from "date-fns";
 
 interface FilterBarProps {
   onFilterChange: (filters: {
     fromDate: string;
     toDate: string;
-    division?: string;
     branch?: string;
   }) => void;
-  divisions?: string[];
   branches?: string[];
-  showDivision?: boolean;
   showBranch?: boolean;
 }
 
 export function FilterBar({
   onFilterChange,
-  divisions = [],
   branches = [],
-  showDivision = true,
   showBranch = true,
 }: FilterBarProps) {
   const [fromDate, setFromDate] = useState(
-    format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd')
+    format(
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      "yyyy-MM-dd"
+    )
   );
-  const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [division, setDivision] = useState<string>('ALL');
-  const [branch, setBranch] = useState<string>('ALL');
+  const [toDate, setToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [branch, setBranch] = useState<string>("ALL");
 
   const activeFilters: { key: string; label: string; value: string }[] = [];
-  if (division !== 'ALL') activeFilters.push({ key: 'division', label: 'Division', value: division });
-  if (branch !== 'ALL') activeFilters.push({ key: 'branch', label: 'Branch', value: branch });
+  if (branch !== "ALL")
+    activeFilters.push({ key: "branch", label: "Branch", value: branch });
 
   const handleApplyFilters = () => {
     onFilterChange({
       fromDate,
       toDate,
-      division: division === 'ALL' ? undefined : division,
-      branch: branch === 'ALL' ? undefined : branch,
+      branch: branch === "ALL" ? undefined : branch,
     });
   };
 
   const handleClearFilters = () => {
-    setFromDate(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
-    setToDate(format(new Date(), 'yyyy-MM-dd'));
-    setDivision('ALL');
-    setBranch('ALL');
+    const firstDay = format(
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      "yyyy-MM-dd"
+    );
+    const today = format(new Date(), "yyyy-MM-dd");
+    setFromDate(firstDay);
+    setToDate(today);
+    setBranch("ALL");
     onFilterChange({
-      fromDate: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
-      toDate: format(new Date(), 'yyyy-MM-dd'),
+      fromDate: firstDay,
+      toDate: today,
     });
   };
 
   const removeFilter = (key: string) => {
-    if (key === 'division') {
-      setDivision('ALL');
-    } else if (key === 'branch') {
-      setBranch('ALL');
+    if (key === "branch") {
+      setBranch("ALL");
     }
     handleApplyFilters();
   };
 
   return (
     <div className="bg-white rounded-lg shadow p-4 mb-6 sticky top-0 z-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
         <div>
           <Label htmlFor="fromDate">From Date</Label>
           <Input
@@ -98,25 +95,6 @@ export function FilterBar({
             onChange={(e) => setToDate(e.target.value)}
           />
         </div>
-
-        {showDivision && divisions.length > 0 && (
-          <div>
-            <Label htmlFor="division">Division</Label>
-            <Select value={division} onValueChange={setDivision}>
-              <SelectTrigger id="division">
-                <SelectValue placeholder="Select Division" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Divisions</SelectItem>
-                {divisions.map((div) => (
-                  <SelectItem key={div} value={div}>
-                    {div}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
 
         {showBranch && branches.length > 0 && (
           <div>

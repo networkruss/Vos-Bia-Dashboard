@@ -1,201 +1,222 @@
-// src/app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = "http://100.126.246.124:8060";
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
-// Map positions to roles
-function getUserRole(position: string, isAdmin: boolean): string {
-  if (!position) return "encoder";
+// --- HELPERS ---
 
-  const positionLower = position.toLowerCase();
-
-  // Check if user is admin first
-  if (isAdmin) return "executive";
-
-  // Executive roles
-  if (
-    positionLower.includes("ceo") ||
-    positionLower.includes("chief executive") ||
-    positionLower.includes("chief operating") ||
-    positionLower.includes("coo") ||
-    positionLower.includes("general manager") ||
-    positionLower.includes("president")
-  ) {
-    return "executive";
-  }
-
-  // Manager roles
-  if (
-    positionLower.includes("manager") ||
-    positionLower.includes("head") ||
-    positionLower.includes("supervisor") ||
-    positionLower.includes("officer")
-  ) {
-    return "manager";
-  }
-
-  // Sales roles
-  if (
-    positionLower.includes("sales") ||
-    positionLower.includes("salesman") ||
-    positionLower.includes("business development") ||
-    positionLower.includes("marketing")
-  ) {
-    return "salesman";
-  }
-
-  // Default to encoder for all other positions
-  return "encoder";
-}
-
-// Check if user is COO/Executive with full access
-function checkIsCOO(position: string, isAdmin: boolean): boolean {
-  if (!position) return false;
-
-  const positionLower = position.toLowerCase();
-
-  // Check if user is admin or has executive position
-  if (isAdmin) return true;
-
-  if (
-    positionLower.includes("ceo") ||
-    positionLower.includes("chief executive") ||
-    positionLower.includes("chief operating") ||
-    positionLower.includes("coo") ||
-    positionLower.includes("general manager") ||
-    positionLower.includes("president")
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-export async function POST(request: Request) {
+async function fetchAll(url: string) {
   try {
-    const body = await request.json();
-    const { username, password } = body;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch (error) {
+    console.error(`Fetch error for ${url}:`, error);
+    return [];
+  }
+}
 
-    // Validate input
-    if (!username || !password) {
-      return NextResponse.json(
-        { error: "Username and password are required" },
-        { status: 400 }
-      );
-    }
+function normalizeDate(d: string | null) {
+  if (!d) return null;
+  if (d.includes("/")) {
+    const [m, day, y] = d.split("/");
+    return `${y}-${m.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  return d;
+}
 
-    // Fetch all users from Directus
-    const usersResponse = await fetch(`${DIRECTUS_URL}/items/user?limit=-1`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
+const toFixed = (num: number) => Math.round(num * 100) / 100;
+
+// --- MAIN ROUTE ---
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const fromDate = normalizeDate(searchParams.get("fromDate"));
+    const toDate = normalizeDate(searchParams.get("toDate"));
+    const divisionFilter = searchParams.get("division");
+
+    // 1. FETCH DATA
+    const [
+      invoices,
+      details,
+      products,
+      pps,
+      suppliers,
+      salesmen,
+      divisions,
+      returns,
+      returnDetails,
+    ] = await Promise.all([
+      fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/products?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/product_per_supplier?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/suppliers?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/salesman?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/division?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_return?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_return_details?limit=-1`),
+    ]);
+
+    // 2. PREPARE LOOKUPS
+    const invoiceMap = new Map();
+    const monthSet = new Set<string>();
+
+    invoices.forEach((i: any) => {
+      if (!i.invoice_date) return;
+      const d = i.invoice_date.substring(0, 10);
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+
+      invoiceMap.set(i.invoice_id, i);
+      monthSet.add(i.invoice_date.substring(0, 7)); // YYYY-MM
     });
 
-    if (!usersResponse.ok) {
-      console.error(
-        "Failed to fetch users from Directus:",
-        usersResponse.status
-      );
-      return NextResponse.json(
-        { error: "Failed to connect to authentication service" },
-        { status: 500 }
-      );
-    }
+    const sortedMonths = Array.from(monthSet).sort();
 
-    const usersData = await usersResponse.json();
-    const users = usersData.data || [];
-
-    if (!Array.isArray(users) || users.length === 0) {
-      return NextResponse.json(
-        { error: "No users available" },
-        { status: 500 }
-      );
-    }
-
-    // Find user by email or username (case-insensitive)
-    const user = users.find((u: any) => {
-      const userEmail = u.user_email?.toLowerCase() || "";
-      const userFname = u.user_fname?.toLowerCase() || "";
-      const inputLower = username.toLowerCase();
-
-      return userEmail === inputLower || userFname === inputLower;
-    });
-
-    if (!user) {
-      console.log("User not found for username:", username);
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is deleted
-    if (
-      user.is_deleted &&
-      user.is_deleted.data &&
-      user.is_deleted.data[0] === 1
-    ) {
-      return NextResponse.json(
-        { error: "Account has been deactivated" },
-        { status: 401 }
-      );
-    }
-
-    // Verify password
-    if (!user.user_password || user.user_password !== password) {
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      );
-    }
-
-    // Determine user role based on position and isAdmin flag
-    const userRole = getUserRole(
-      user.user_position || "",
-      user.isAdmin || false
+    const productParentMap = new Map(
+      products.map((p: any) => [p.product_id, p.parent_id || p.product_id])
     );
 
-    // Check if user is COO/Executive with full dashboard access
-    const isCOO = checkIsCOO(
-      user.user_position || "",
-      user.isAdmin || false
+    // Optimized Supplier Lookup
+    const primarySupplierMap = new Map();
+    pps
+      .sort((a: any, b: any) => (a.id || 0) - (b.id || 0))
+      .forEach((r: any) => {
+        if (!primarySupplierMap.has(r.product_id))
+          primarySupplierMap.set(r.product_id, r.supplier_id);
+      });
+
+    const supplierNameMap = new Map(
+      suppliers.map((s: any) => [String(s.id), s.supplier_name])
+    );
+    const salesmanDivisionMap = new Map(
+      salesmen.map((s: any) => [String(s.id), String(s.division_id)])
+    );
+    const divisionNameMap = new Map(
+      divisions.map((d: any) => [String(d.division_id), d.division_name])
     );
 
-    // Generate token
-    const token = Buffer.from(
-      `${user.user_id}:${user.user_email}:${Date.now()}`
-    ).toString("base64");
-
-    // Prepare user response
-    const userResponse = {
-      id: user.user_id,
-      username: user.user_fname || user.user_email,
-      email: user.user_email || "",
-      role: userRole,
-      name: `${user.user_fname || ""} ${user.user_lname || ""}`.trim(),
-      position: user.user_position || "",
-      isAdmin: user.isAdmin || false,
-      isCOO: isCOO, // Add isCOO flag to user response
-    };
-
-    console.log("Login successful:", {
-      email: userResponse.email,
-      role: userResponse.role,
-      position: user.user_position,
-      isAdmin: user.isAdmin,
-      isCOO: isCOO,
+    // Returns Lookup
+    const returnItemMap = new Map<string, { total: number; disc: number }>();
+    returnDetails.forEach((rd: any) => {
+      const parent = returns.find((r: any) => r.return_number === rd.return_no);
+      if (!parent) return;
+      const masterProduct =
+        productParentMap.get(rd.product_id) || rd.product_id;
+      const key = `${parent.order_id}_${parent.invoice_no}_${masterProduct}`;
+      const cur = returnItemMap.get(key) || { total: 0, disc: 0 };
+      returnItemMap.set(key, {
+        total: cur.total + (+rd.total_amount || 0),
+        disc: cur.disc + (+rd.discount_amount || 0),
+      });
     });
+
+    // 3. AGGREGATION (FAST MAP APPROACH)
+    // Structure: Map<Division, Map<Supplier, RowObject>>
+    const heatmapMap = new Map<string, Map<string, any>>();
+    const supplierChartMap = new Map<string, Map<string, number>>();
+    const divisionTotals = new Map<string, number>();
+    const monthlyTotals = new Map<string, number>();
+
+    sortedMonths.forEach((m) => monthlyTotals.set(m, 0));
+    let grandTotal = 0;
+
+    details.forEach((det: any) => {
+      const invId =
+        typeof det.invoice_no === "object"
+          ? det.invoice_no?.id
+          : det.invoice_no;
+      const inv = invoiceMap.get(invId);
+      if (!inv) return;
+
+      const divId = salesmanDivisionMap.get(String(inv.salesman_id));
+      const division = divisionNameMap.get(divId) || "Unassigned";
+
+      if (
+        divisionFilter &&
+        divisionFilter !== "all" &&
+        division !== divisionFilter
+      )
+        return;
+
+      const masterProduct =
+        productParentMap.get(det.product_id) || det.product_id;
+      const supplierId = String(primarySupplierMap.get(masterProduct));
+      const supplier = supplierNameMap.get(supplierId) || "No Supplier";
+
+      const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
+      const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
+
+      const net =
+        (+det.total_amount || 0) -
+        (+det.discount_amount || 0) -
+        (ret.total - ret.disc);
+      if (net === 0) return;
+
+      // Aggregates
+      grandTotal += net;
+      const month = inv.invoice_date.substring(0, 7);
+
+      monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + net);
+      divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
+
+      // --- HEATMAP BUILDER ---
+      if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
+      const divMap = heatmapMap.get(division)!;
+
+      if (!divMap.has(supplier)) {
+        const row: any = { supplier, total: 0 }; // Consistent key "supplier"
+        sortedMonths.forEach((m) => (row[m] = 0));
+        divMap.set(supplier, row);
+      }
+      const hRow = divMap.get(supplier)!;
+      hRow[month] += net;
+      hRow.total += net;
+
+      // --- CHART BUILDER ---
+      if (!supplierChartMap.has(division))
+        supplierChartMap.set(division, new Map());
+      const cMap = supplierChartMap.get(division)!;
+      cMap.set(supplier, (cMap.get(supplier) || 0) + net);
+    });
+
+    // 4. FORMAT RESPONSE
+    const heatmapFinal: any = {};
+    for (const [div, sMap] of heatmapMap.entries()) {
+      heatmapFinal[div] = Array.from(sMap.values())
+        .map((row) => {
+          row.total = toFixed(row.total);
+          sortedMonths.forEach((m) => (row[m] = toFixed(row[m])));
+          return row;
+        })
+        .sort((a, b) => b.total - a.total); // Sort: Highest sales first
+    }
+
+    const chartFinal: any = {};
+    for (const [div, sMap] of supplierChartMap.entries()) {
+      chartFinal[div] = Array.from(sMap, ([name, netSales]) => ({
+        name,
+        netSales: toFixed(netSales),
+      })).sort((a, b) => b.netSales - a.netSales);
+    }
 
     return NextResponse.json({
-      success: true,
-      token,
-      user: userResponse,
+      kpi: { totalNetSales: toFixed(grandTotal) },
+      divisionSales: Array.from(divisionTotals, ([division, netSales]) => ({
+        division,
+        netSales: toFixed(netSales),
+      })).sort((a, b) => b.netSales - a.netSales),
+      supplierSalesByDivision: chartFinal,
+      heatmapDataByDivision: heatmapFinal,
+      salesTrend: sortedMonths.map((m) => ({
+        date: m,
+        netSales: toFixed(monthlyTotals.get(m) || 0),
+      })),
     });
-  } catch (error) {
-    console.error("Login error:", error);
-    return NextResponse.json(
-      { error: "An error occurred during login: " + (error as Error).message },
-      { status: 500 }
-    );
+  } catch (err: any) {
+    console.error("Exec Dashboard Error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

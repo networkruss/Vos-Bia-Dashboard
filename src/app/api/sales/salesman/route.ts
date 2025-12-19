@@ -1,7 +1,7 @@
 // src/app/api/sales/salesman/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const DIRECTUS_URL = "http://100.126.246.124:8060";
+const DIRECTUS_URL = "http://100.110.197.61:8091"; // Update to correct Directus URL
 const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN || "";
 
 // Define types for Directus data
@@ -59,11 +59,11 @@ function getHeaders() {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
-  
+
   if (DIRECTUS_TOKEN) {
     headers["Authorization"] = `Bearer ${DIRECTUS_TOKEN}`;
   }
-  
+
   return headers;
 }
 
@@ -71,7 +71,7 @@ function getHeaders() {
 async function safeFetch<T>(url: string, collectionName: string): Promise<T[]> {
   try {
     console.log(`📍 Fetching ${collectionName} from:`, url);
-    
+
     const response = await fetch(url, {
       headers: getHeaders(),
       cache: "no-store",
@@ -80,18 +80,22 @@ async function safeFetch<T>(url: string, collectionName: string): Promise<T[]> {
     console.log(`📊 ${collectionName} status:`, response.status);
 
     if (response.ok) {
-      const json = await response.json() as DirectusResponse<T>;
+      const json = (await response.json()) as DirectusResponse<T>;
       const data = json.data || [];
       console.log(`✅ ${collectionName}: ${data.length} records`);
       return data;
     } else if (response.status === 403) {
-      console.warn(`⚠️ ${collectionName}: 403 Forbidden - check Directus permissions`);
+      console.warn(
+        `⚠️ ${collectionName}: 403 Forbidden - check Directus permissions`
+      );
       return [];
     } else if (response.status === 404) {
       console.warn(`⚠️ ${collectionName}: Collection not found`);
       return [];
     } else {
-      console.error(`❌ ${collectionName}: ${response.status} ${response.statusText}`);
+      console.error(
+        `❌ ${collectionName}: ${response.status} ${response.statusText}`
+      );
       return [];
     }
   } catch (error) {
@@ -131,7 +135,10 @@ export async function GET(request: NextRequest) {
         "deals"
       ),
       safeFetch<Target>(
-        `${DIRECTUS_URL}/items/targets?filter[salesman_id][_eq]=${salesmanId}&filter[period][_eq]=${fromDate?.substring(0, 7)}&limit=1`,
+        `${DIRECTUS_URL}/items/targets?filter[salesman_id][_eq]=${salesmanId}&filter[period][_eq]=${fromDate?.substring(
+          0,
+          7
+        )}&limit=1`,
         "targets"
       ),
     ]);
@@ -185,14 +192,17 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Group by customer for top customers (using customer_code)
-    const customerSalesMap = new Map<string, {
-      customer: string;
-      division: string;
-      branch: string;
-      netSales: number;
-      invoices: number;
-      lastInvoiceDate: string;
-    }>();
+    const customerSalesMap = new Map<
+      string,
+      {
+        customer: string;
+        division: string;
+        branch: string;
+        netSales: number;
+        invoices: number;
+        lastInvoiceDate: string;
+      }
+    >();
 
     invoices.forEach((inv) => {
       const customerCode = inv.customer_code;
@@ -210,7 +220,8 @@ export async function GET(request: NextRequest) {
         }
       } else {
         customerSalesMap.set(customerCode, {
-          customer: customer?.customer_name || customer?.store_name || customerCode,
+          customer:
+            customer?.customer_name || customer?.store_name || customerCode,
           division: customer?.province || "N/A",
           branch: customer?.city || "N/A",
           netSales: invoiceAmount,
@@ -241,7 +252,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Get target amount (default to 300000 if not set)
-    const target = targets.length > 0 ? (targets[0].target_amount || 300000) : 300000;
+    const target =
+      targets.length > 0 ? targets[0].target_amount || 300000 : 300000;
 
     const responseData = {
       success: true,
@@ -272,9 +284,9 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(responseData);
-
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error("❌ Error in salesman API route:", error);
     return NextResponse.json(
       {
