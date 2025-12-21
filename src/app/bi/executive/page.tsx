@@ -12,6 +12,15 @@ import { DivisionSalesChart } from "@/components/modules/bi/DivisionSalesChart";
 import { SupplierSalesChart } from "@/components/dashboard/SupplierSalesChart";
 import { SupplierHeatmap } from "@/components/dashboard/SupplierHeatmap";
 
+// 1. DEFINE COLORS: Ito ang magbabalik ng kulay sa bawat division
+const DIVISION_COLORS: Record<string, string> = {
+  "Dry Goods": "#3b82f6", // Blue
+  Industrial: "#8b5cf6", // Violet/Purple
+  "Mama Pina's": "#f59e0b", // Amber/Orange
+  "Frozen Goods": "#06b6d4", // Cyan
+  Unassigned: "#ec4899", // Pink
+};
+
 export default function ExecutiveDashboard() {
   const { loading, error, dashboardData, handleFilterChange } =
     useExecutiveData();
@@ -43,6 +52,11 @@ export default function ExecutiveDashboard() {
     });
   };
 
+  // 2. GET ACTIVE COLOR: Kunin ang kulay base sa pinindot na division
+  const activeColor = selectedDivision
+    ? DIVISION_COLORS[selectedDivision] || "#3b82f6" // Default blue if unknown
+    : "#3b82f6";
+
   if (loading)
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -62,7 +76,6 @@ export default function ExecutiveDashboard() {
         divisions={Array.from(
           new Set(dashboardData.divisionSales.map((d: any) => d.division))
         )}
-        // Prevent crash if topCustomers is undefined in new route
         branches={[]}
       />
 
@@ -73,7 +86,6 @@ export default function ExecutiveDashboard() {
           value={formatCurrency(dashboardData.kpi?.totalNetSales ?? 0)}
           icon={TrendingUp}
         />
-        {/* Changed 'Growth Rate' to 'Total Returns' to reflect new data accuracy */}
         <KPICard
           title="Total Returns"
           value={formatCurrency(dashboardData.kpi?.totalReturns ?? 0)}
@@ -93,7 +105,6 @@ export default function ExecutiveDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        {/* Simplified TabsList - Customers removed */}
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
         </TabsList>
@@ -119,9 +130,10 @@ export default function ExecutiveDashboard() {
               ref={drilldownRef}
               className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500"
             >
+              {/* SUPPLIER BREAKDOWN CHART */}
               <Card className="border-blue-100 shadow-md">
-                <CardHeader className="bg-blue-50/30 border-b">
-                  <CardTitle className="text-blue-800">
+                <CardHeader className="bg-gray-50/50 border-b">
+                  <CardTitle style={{ color: activeColor }}>
                     Supplier Breakdown: {selectedDivision}
                   </CardTitle>
                 </CardHeader>
@@ -132,10 +144,12 @@ export default function ExecutiveDashboard() {
                         selectedDivision
                       ] || []
                     }
+                    barColor={activeColor} // Pass the dynamic color here
                   />
                 </CardContent>
               </Card>
 
+              {/* MONTHLY HEATMAP */}
               <Card className="shadow-md">
                 <CardHeader className="border-b">
                   <CardTitle>
@@ -148,6 +162,7 @@ export default function ExecutiveDashboard() {
                       dashboardData.heatmapDataByDivision?.[selectedDivision] ||
                       []
                     }
+                    divisionName={selectedDivision} // Pass name for theme coloring
                   />
                 </CardContent>
               </Card>

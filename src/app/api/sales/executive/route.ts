@@ -19,7 +19,7 @@ async function fetchAll(url: string) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* DATE NORMALIZER & FORMATTER                                                */
+/* HELPERS                                                                    */
 /* -------------------------------------------------------------------------- */
 
 function normalizeDate(d: string | null) {
@@ -32,6 +32,14 @@ function normalizeDate(d: string | null) {
 }
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
+
+// Helper to check buffer/bit fields like isCancelled: { type: 'Buffer', data: [1] }
+function isTruthy(field: any) {
+  if (field === true || field === 1 || field === "1") return true;
+  if (field && typeof field === "object" && field.data && field.data[0] === 1)
+    return true;
+  return false;
+}
 
 /* -------------------------------------------------------------------------- */
 /* MAIN ROUTE                                                                 */
@@ -48,8 +56,6 @@ export async function GET(request: Request) {
     /* LOAD DATA                                                              */
     /* ---------------------------------------------------------------------- */
 
-    // NOTE: 'limit=-1' works if Directus is configured to allow it.
-    // If data is missing, check Directus env LIMIT settings.
     const [
       invoices,
       details,
@@ -60,6 +66,7 @@ export async function GET(request: Request) {
       divisions,
       returns,
       returnDetails,
+      collections, // <--- NEW: Loaded Collections
     ] = await Promise.all([
       fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
@@ -70,50 +77,54 @@ export async function GET(request: Request) {
       fetchAll(`${DIRECTUS_URL}/items/division?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_return?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_return_details?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/collection?limit=-1`), // <--- Fetching Collections
     ]);
 
     /* ---------------------------------------------------------------------- */
-    /* BUILD MONTH LIST & INVOICE MAP                                         */
+    /* BUILD MAPS                                                             */
     /* ---------------------------------------------------------------------- */
 
     const monthSet = new Set<string>();
     const invoiceMap = new Map();
 
     invoices.forEach((i: any) => {
-      // Basic validation
       if (!i.invoice_date) return;
-
-      // Optional: Add "Status/Posted" check here if your system uses it
-      // if (i.status !== 'posted' && i.isPosted !== true) return;
-
       const d = i.invoice_date.substring(0, 10);
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
 
       invoiceMap.set(i.invoice_id, i);
-      monthSet.add(i.invoice_date.substring(0, 7)); // YYYY-MM
+      monthSet.add(i.invoice_date.substring(0, 7));
     });
 
     const sortedMonths = Array.from(monthSet).sort();
 
-    /* ---------------------------------------------------------------------- */
-    /* LOOKUP MAPS (Optimized for safe strings)                               */
-    /* ---------------------------------------------------------------------- */
-
     const productParentMap = new Map(
-      products.map((p: any) => [p.product_id, p.parent_id || p.product_id])
+      products.map((p: any) => {
+        const parentId =
+          p.parent_id === 0 || p.parent_id === null
+            ? p.product_id
+            : p.parent_id;
+        return [p.product_id, parentId];
+      })
+    );
+
+    const productCostMap = new Map(
+      products.map((p: any) => [
+        p.product_id,
+        Number(p.cost_per_unit) || Number(p.estimated_unit_cost) || 0,
+      ])
     );
 
     const primarySupplierMap = new Map();
     pps
-      .sort((a: any, b: any) => (a.id || 0) - (b.id || 0)) // Prioritize first entry
+      .sort((a: any, b: any) => (a.id || 0) - (b.id || 0))
       .forEach((r: any) => {
         if (!primarySupplierMap.has(r.product_id)) {
           primarySupplierMap.set(r.product_id, r.supplier_id);
         }
       });
 
-    // Use String keys for safe lookups
     const supplierNameMap = new Map(
       suppliers.map((s: any) => [String(s.id), s.supplier_name])
     );
@@ -127,7 +138,7 @@ export async function GET(request: Request) {
     );
 
     /* ---------------------------------------------------------------------- */
-    /* RETURNS (Parent-Aware)                                                 */
+    /* RETURNS MAPPING                                                        */
     /* ---------------------------------------------------------------------- */
 
     const returnItemMap = new Map<string, { total: number; disc: number }>();
@@ -149,31 +160,60 @@ export async function GET(request: Request) {
     });
 
     /* ---------------------------------------------------------------------- */
-    /* AGGREGATION LOOP (Optimized with Maps)                                 */
+    /* SALES AGGREGATION                                                      */
     /* ---------------------------------------------------------------------- */
 
-    // Structure: Map<DivisionName, Map<SupplierName, RowObject>>
     const heatmapMap = new Map<string, Map<string, any>>();
     const supplierChartMap = new Map<string, Map<string, number>>();
-
     const divisionTotals = new Map<string, number>();
     const monthlyTotals = new Map<string, number>();
 
     sortedMonths.forEach((m) => monthlyTotals.set(m, 0));
+
+    // Initialize Divisions
+    divisions.forEach((d: any) => {
+      if (d.division_name) {
+        divisionTotals.set(d.division_name, 0);
+      }
+    });
+
     let grandTotal = 0;
+    let grandTotalReturns = 0;
+    let grandTotalCOGS = 0;
 
     details.forEach((det: any) => {
-      // Handle invoice linking (Directus sometimes returns object, sometimes ID)
       const invId =
         typeof det.invoice_no === "object"
           ? det.invoice_no?.id
           : det.invoice_no;
-
       const inv = invoiceMap.get(invId);
-      if (!inv) return; // Invoice filtered out by date or invalid
 
+      if (!inv) return;
+
+      const masterProduct =
+        productParentMap.get(det.product_id) || det.product_id;
+      const supplierId = String(primarySupplierMap.get(masterProduct));
+      const supplier = supplierNameMap.get(supplierId) || "No Supplier";
+
+      // --- DIVISION LOGIC ---
       const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
-      const division = divisionNameMap.get(divisionId) || "Unassigned";
+      let division = divisionNameMap.get(divisionId);
+
+      // Fallback Logic
+      if (!division || division === "Unassigned") {
+        if (supplier === "VOS" || supplier === "VOS BIA") {
+          division = "Dry Goods";
+        } else if (supplier === "Mama Pina's") {
+          division = "Mama Pina's";
+        } else if (
+          supplier === "Industrial Corp" ||
+          supplier.includes("Industrial")
+        ) {
+          division = "Industrial";
+        } else {
+          division = "Frozen Goods";
+        }
+      }
 
       if (
         divisionFilter &&
@@ -182,33 +222,35 @@ export async function GET(request: Request) {
       )
         return;
 
-      const masterProduct =
-        productParentMap.get(det.product_id) || det.product_id;
-      const supplierId = String(primarySupplierMap.get(masterProduct));
-      const supplier = supplierNameMap.get(supplierId) || "No Supplier";
-
-      // Net Calc
+      // Net Sales Calc
       const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
       const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
+      const returnAmount = ret.total - ret.disc;
+
+      grandTotalReturns += returnAmount;
 
       const net =
-        (+det.total_amount || 0) -
-        (+det.discount_amount || 0) -
-        (ret.total - ret.disc);
+        (+det.total_amount || 0) - (+det.discount_amount || 0) - returnAmount;
 
-      if (net === 0) return;
+      // COGS Calc
+      const unitCost = productCostMap.get(det.product_id) || 0;
+      const unitPrice = +det.unit_price || 0;
+      const returnedQtyApprox = unitPrice > 0 ? returnAmount / unitPrice : 0;
+      const netQty = (+det.quantity || 0) - returnedQtyApprox;
+      const cogs = unitCost * netQty;
+      grandTotalCOGS += cogs;
 
-      // --- Aggregates ---
       grandTotal += net;
       const month = inv.invoice_date.substring(0, 7);
 
       monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + net);
       divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
 
-      // 1. Heatmap Aggregation (via Map)
+      if (net === 0) return;
+
+      // Heatmap
       if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
       const divMap = heatmapMap.get(division)!;
-
       if (!divMap.has(supplier)) {
         const row: any = { supplier, total: 0 };
         sortedMonths.forEach((m) => (row[m] = 0));
@@ -218,7 +260,7 @@ export async function GET(request: Request) {
       hRow[month] += net;
       hRow.total += net;
 
-      // 2. Chart Aggregation
+      // Chart
       if (!supplierChartMap.has(division))
         supplierChartMap.set(division, new Map());
       const chartMap = supplierChartMap.get(division)!;
@@ -226,10 +268,59 @@ export async function GET(request: Request) {
     });
 
     /* ---------------------------------------------------------------------- */
-    /* FINAL FORMATTING & SORTING                                             */
+    /* COLLECTION AGGREGATION (NEW)                                           */
     /* ---------------------------------------------------------------------- */
 
-    // Transform Heatmap Map -> Sorted Array
+    let totalCollected = 0;
+
+    collections.forEach((col: any) => {
+      // 1. Date Filter
+      if (!col.collection_date) return;
+      const d = col.collection_date.substring(0, 10);
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+
+      // 2. Ignore Cancelled Transactions
+      if (isTruthy(col.isCancelled)) return;
+
+      // 3. Division Filter
+      // Note: Collections rely on Salesman mapping. Fallbacks based on Supplier
+      // (like for sales) are not possible here as collections don't have supplier info.
+      const divId = salesmanDivisionMap.get(String(col.salesman_id));
+      const colDivision = divisionNameMap.get(divId) || "Unassigned";
+
+      // If Global Filter is active, exclude collections not from that division
+      if (
+        divisionFilter &&
+        divisionFilter !== "all" &&
+        colDivision !== divisionFilter
+      ) {
+        return;
+      }
+
+      totalCollected += +col.totalAmount || 0;
+    });
+
+    /* ---------------------------------------------------------------------- */
+    /* FINAL KPI CALCULATIONS                                                 */
+    /* ---------------------------------------------------------------------- */
+
+    // Gross Margin
+    let grossMargin = 0;
+    if (grandTotal > 0) {
+      grossMargin = ((grandTotal - grandTotalCOGS) / grandTotal) * 100;
+    }
+
+    // Collection Rate
+    let collectionRate = 0;
+    if (grandTotal > 0) {
+      collectionRate = (totalCollected / grandTotal) * 100;
+    }
+
+    /* ---------------------------------------------------------------------- */
+    /* FORMATTING RESPONSE                                                    */
+    /* ---------------------------------------------------------------------- */
+
     const heatmapFinal: any = {};
     for (const [divName, sMap] of heatmapMap.entries()) {
       heatmapFinal[divName] = Array.from(sMap.values())
@@ -238,10 +329,9 @@ export async function GET(request: Request) {
           sortedMonths.forEach((m) => (row[m] = toFixed(row[m])));
           return row;
         })
-        .sort((a, b) => b.total - a.total); // Sort High to Low
+        .sort((a, b) => b.total - a.total);
     }
 
-    // Transform Chart Map -> Sorted Array
     const chartFinal: any = {};
     for (const [divName, sMap] of supplierChartMap.entries()) {
       chartFinal[divName] = Array.from(sMap, ([name, netSales]) => ({
@@ -250,26 +340,26 @@ export async function GET(request: Request) {
       })).sort((a, b) => b.netSales - a.netSales);
     }
 
-    /* ---------------------------------------------------------------------- */
-    /* RESPONSE                                                               */
-    /* ---------------------------------------------------------------------- */
+    const divisionSalesFormatted = Array.from(
+      divisionTotals,
+      ([division, netSales]) => ({
+        division,
+        netSales: toFixed(netSales),
+      })
+    )
+      .filter((d) => d.netSales !== 0 || d.division === "Frozen Goods")
+      .sort((a, b) => b.netSales - a.netSales);
 
     return NextResponse.json({
       kpi: {
         totalNetSales: toFixed(grandTotal),
-        // Add placeholders if needed by frontend
-        growthVsPrevious: 0,
-        grossMargin: 0,
-        collectionRate: 0,
+        totalReturns: toFixed(grandTotalReturns),
+        grossMargin: toFixed(grossMargin),
+        collectionRate: toFixed(collectionRate), // Calculated!
       },
-      divisionSales: Array.from(divisionTotals, ([division, netSales]) => ({
-        division,
-        netSales: toFixed(netSales),
-      })).sort((a, b) => b.netSales - a.netSales),
-
+      divisionSales: divisionSalesFormatted,
       supplierSalesByDivision: chartFinal,
       heatmapDataByDivision: heatmapFinal,
-
       salesTrend: sortedMonths.map((month) => ({
         date: month,
         netSales: toFixed(monthlyTotals.get(month) || 0),

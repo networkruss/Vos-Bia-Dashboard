@@ -11,13 +11,22 @@ import {
   Cell,
 } from "recharts";
 
-export function SupplierSalesChart({ data }: { data: any[] }) {
+interface SupplierSalesChartProps {
+  data: any[];
+  barColor?: string; // Added prop for dynamic color
+}
+
+export function SupplierSalesChart({
+  data,
+  barColor = "#3b82f6", // Default to Blue if no color is provided
+}: SupplierSalesChartProps) {
   return (
-    <div className="h-[350px] w-full">
+    <div className="h-[400px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          // Increased bottom margin to make room for rotated labels
+          margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -26,9 +35,13 @@ export function SupplierSalesChart({ data }: { data: any[] }) {
           />
           <XAxis
             dataKey="name"
-            fontSize={12}
+            interval={0} // <--- CRITICAL: Forces ALL labels to show
+            fontSize={11} // Slightly smaller font
             tickLine={false}
             axisLine={{ stroke: "#e5e7eb" }}
+            angle={-45} // <--- Rotates text so long names fit
+            textAnchor="end" // Aligns rotated text to the tick mark
+            height={80} // Allocates height for the axis itself
           />
           <YAxis
             fontSize={12}
@@ -37,23 +50,32 @@ export function SupplierSalesChart({ data }: { data: any[] }) {
             tickFormatter={(value) => `₱${(Number(value) / 1000).toFixed(0)}K`}
           />
           <Tooltip
-            cursor={{ fill: "rgba(59, 130, 246, 0.1)" }}
+            cursor={{ fill: "rgba(0,0,0, 0.05)" }}
+            contentStyle={{
+              borderRadius: "8px",
+              border: "none",
+              boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+            }}
             formatter={(value: any) => [
               `₱${Number(value).toLocaleString()}`,
-              "Sales",
+              "Net Sales",
             ]}
           />
 
           <Bar
             dataKey="netSales"
-            fill="#3b82f6"
+            fill={barColor} // Uses the dynamic color passed from parent
             radius={[4, 4, 0, 0]}
-            barSize={60}
+            barSize={70} // <--- UPDATED: Increased from 50 to 70 for wider bars
           >
-            {data.map((_: any, index: number) => (
+            {/* Optional: subtle opacity change for alternating bars, 
+               but keeping the main color consistent with the Division theme 
+            */}
+            {data.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={index % 2 === 0 ? "#3b82f6" : "#60a5fa"}
+                fill={barColor}
+                fillOpacity={index % 2 === 0 ? 1 : 0.85}
               />
             ))}
           </Bar>
