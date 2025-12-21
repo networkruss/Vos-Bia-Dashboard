@@ -36,10 +36,10 @@ const navItems: NavItem[] = [
     role: ["manager", "executive"], // Add executive here
   },
   {
-    title: "Salesman Dashboard",
-    href: "/bi/salesman",
+    title: "Supervisor Dashboard",
+    href: "/bi/supervisor",
     icon: Users,
-    role: ["salesman", "executive"], // Add executive here
+    role: ["supervisor", "executive"], // Add executive here
   },
   {
     title: "Encoder Dashboard",
@@ -92,7 +92,7 @@ export function Sidebar() {
   const filteredNavItems = navItems.filter((item) => {
     // If no role specified, show to everyone
     if (!item.role) return true;
-    
+
     // Show item if user's role is in the allowed roles
     return item.role.includes(userRole);
   });
