@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import type { DashboardFilters } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TrendingUp, Percent, TrendingDown } from "lucide-react";
@@ -29,7 +30,7 @@ export default function ExecutiveDashboard() {
   // Reference for smooth scrolling
   const drilldownRef = useRef<HTMLDivElement>(null);
 
-  const onFilterUpdate = (filters: any) => {
+  const onFilterUpdate = (filters: DashboardFilters) => {
     handleFilterChange(filters);
     setSelectedDivision(null); // Reset drilldown on filter change
   };
@@ -71,13 +72,7 @@ export default function ExecutiveDashboard() {
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold">Executive Dashboard</h1>
 
-      <FilterBar
-        onFilterChange={onFilterUpdate}
-        divisions={Array.from(
-          new Set(dashboardData.divisionSales.map((d: any) => d.division))
-        )}
-        branches={[]}
-      />
+      <FilterBar onFilterChange={onFilterUpdate} branches={[]} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -113,7 +108,8 @@ export default function ExecutiveDashboard() {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle>
-                Division Sales (Click anywhere on a bar's column to see details)
+                Division Sales (Click anywhere on a bar&apos;s column to see
+                details)
               </CardTitle>
             </CardHeader>
             <CardContent>

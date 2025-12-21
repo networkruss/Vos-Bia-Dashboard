@@ -31,7 +31,6 @@ export async function GET(request: Request) {
       ]);
 
     // 2. PROCESS MAPS
-    const customerMap = new Map(customers.map((c: any) => [c.id, c]));
     const productMap = new Map(
       products.map((p: any) => [p.product_id, p.product_name])
     );

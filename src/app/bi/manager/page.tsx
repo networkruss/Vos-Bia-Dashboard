@@ -45,6 +45,7 @@ interface BadStockMetric {
 }
 
 interface SalesData {
+  [key: string]: string | number;
   name: string;
   value: number;
 }
@@ -287,7 +288,7 @@ export default function ManagerDashboard() {
           </div>
 
           {/* --- STOCK MOVEMENT CHART --- */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm h-[320px]">
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm h-80">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
               <Activity className="h-5 w-5 text-blue-600" /> Stock Movement
               Trend

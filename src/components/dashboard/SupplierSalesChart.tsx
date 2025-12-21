@@ -11,8 +11,13 @@ import {
   Cell,
 } from "recharts";
 
+interface SupplierDatum {
+  name: string;
+  netSales: number;
+}
+
 interface SupplierSalesChartProps {
-  data: any[];
+  data: SupplierDatum[];
   barColor?: string; // Added prop for dynamic color
 }
 
@@ -56,7 +61,7 @@ export function SupplierSalesChart({
               border: "none",
               boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
             }}
-            formatter={(value: any) => [
+            formatter={(value: number | string) => [
               `₱${Number(value).toLocaleString()}`,
               "Net Sales",
             ]}

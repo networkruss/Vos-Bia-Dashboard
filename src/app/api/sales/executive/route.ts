@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
-
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
 /* -------------------------------------------------------------------------- */
 /* FETCH HELPERS                                                              */
 /* -------------------------------------------------------------------------- */
 
-async function fetchAll(url: string) {
+async function fetchAll<T = any>(url: string): Promise<T[]> {
   try {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return [];
     const json = await res.json();
-    return json.data || [];
+    return (json.data as T[]) || [];
   } catch (error) {
     console.error(`Fetch error for ${url}:`, error);
     return [];
@@ -85,7 +84,7 @@ export async function GET(request: Request) {
     /* ---------------------------------------------------------------------- */
 
     const monthSet = new Set<string>();
-    const invoiceMap = new Map();
+    const invoiceMap = new Map<string, any>();
 
     invoices.forEach((i: any) => {
       if (!i.invoice_date) return;
@@ -99,7 +98,7 @@ export async function GET(request: Request) {
 
     const sortedMonths = Array.from(monthSet).sort();
 
-    const productParentMap = new Map(
+    const productParentMap = new Map<string | number, string | number>(
       products.map((p: any) => {
         const parentId =
           p.parent_id === 0 || p.parent_id === null
@@ -109,14 +108,14 @@ export async function GET(request: Request) {
       })
     );
 
-    const productCostMap = new Map(
+    const productCostMap = new Map<string | number, number>(
       products.map((p: any) => [
         p.product_id,
         Number(p.cost_per_unit) || Number(p.estimated_unit_cost) || 0,
       ])
     );
 
-    const primarySupplierMap = new Map();
+    const primarySupplierMap = new Map<string | number, string | number>();
     pps
       .sort((a: any, b: any) => (a.id || 0) - (b.id || 0))
       .forEach((r: any) => {
@@ -125,16 +124,19 @@ export async function GET(request: Request) {
         }
       });
 
-    const supplierNameMap = new Map(
-      suppliers.map((s: any) => [String(s.id), s.supplier_name])
+    const supplierNameMap = new Map<string, string>(
+      suppliers.map((s: any) => [String(s.id), String(s.supplier_name)])
     );
 
-    const salesmanDivisionMap = new Map(
+    const salesmanDivisionMap = new Map<string, string>(
       salesmen.map((s: any) => [String(s.id), String(s.division_id)])
     );
 
-    const divisionNameMap = new Map(
-      divisions.map((d: any) => [String(d.division_id), d.division_name])
+    const divisionNameMap = new Map<string, string>(
+      divisions.map((d: any) => [
+        String(d.division_id),
+        String(d.division_name),
+      ])
     );
 
     /* ---------------------------------------------------------------------- */
@@ -172,8 +174,9 @@ export async function GET(request: Request) {
 
     // Initialize Divisions
     divisions.forEach((d: any) => {
-      if (d.division_name) {
-        divisionTotals.set(d.division_name, 0);
+      const name = String(d.division_name || d.division);
+      if (name) {
+        divisionTotals.set(name, 0);
       }
     });
 
@@ -193,11 +196,13 @@ export async function GET(request: Request) {
       const masterProduct =
         productParentMap.get(det.product_id) || det.product_id;
       const supplierId = String(primarySupplierMap.get(masterProduct));
-      const supplier = supplierNameMap.get(supplierId) || "No Supplier";
+      const supplierRaw = supplierNameMap.get(supplierId);
+      const supplier =
+        typeof supplierRaw === "string" ? supplierRaw : "No Supplier";
 
       // --- DIVISION LOGIC ---
       const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
-      let division = divisionNameMap.get(divisionId);
+      let division = divisionId ? divisionNameMap.get(divisionId) : undefined;
 
       // Fallback Logic
       if (!division || division === "Unassigned") {
@@ -207,7 +212,7 @@ export async function GET(request: Request) {
           division = "Mama Pina's";
         } else if (
           supplier === "Industrial Corp" ||
-          supplier.includes("Industrial")
+          (typeof supplier === "string" && supplier.includes("Industrial"))
         ) {
           division = "Industrial";
         } else {
@@ -233,7 +238,7 @@ export async function GET(request: Request) {
         (+det.total_amount || 0) - (+det.discount_amount || 0) - returnAmount;
 
       // COGS Calc
-      const unitCost = productCostMap.get(det.product_id) || 0;
+      const unitCost = Number(productCostMap.get(det.product_id) || 0);
       const unitPrice = +det.unit_price || 0;
       const returnedQtyApprox = unitPrice > 0 ? returnAmount / unitPrice : 0;
       const netQty = (+det.quantity || 0) - returnedQtyApprox;
@@ -262,7 +267,7 @@ export async function GET(request: Request) {
 
       // Chart
       if (!supplierChartMap.has(division))
-        supplierChartMap.set(division, new Map());
+        supplierChartMap.set(division, new Map<string, number>());
       const chartMap = supplierChartMap.get(division)!;
       chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
     });
@@ -287,7 +292,9 @@ export async function GET(request: Request) {
       // Note: Collections rely on Salesman mapping. Fallbacks based on Supplier
       // (like for sales) are not possible here as collections don't have supplier info.
       const divId = salesmanDivisionMap.get(String(col.salesman_id));
-      const colDivision = divisionNameMap.get(divId) || "Unassigned";
+      const colDivision = divId
+        ? divisionNameMap.get(divId) || "Unassigned"
+        : "Unassigned";
 
       // If Global Filter is active, exclude collections not from that division
       if (
@@ -298,7 +305,7 @@ export async function GET(request: Request) {
         return;
       }
 
-      totalCollected += +col.totalAmount || 0;
+      totalCollected += Number(col.totalAmount) || 0;
     });
 
     /* ---------------------------------------------------------------------- */
@@ -365,8 +372,9 @@ export async function GET(request: Request) {
         netSales: toFixed(monthlyTotals.get(month) || 0),
       })),
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("Dashboard Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

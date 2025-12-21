@@ -121,14 +121,16 @@ export async function GET(request: Request) {
             : det.invoice_no;
 
         if (validInvoiceIds.has(invId)) {
-          const pName =
-            productMap.get(det.product_id) || `Product ${det.product_id}`;
+          const pName = String(
+            productMap.get(det.product_id) || `Product ${det.product_id}`
+          );
           const amount = Number(det.total_amount) || 0;
           const qty = Number(det.quantity) || 0;
 
           // Identify Supplier (Default to 'Internal' if not found in map)
-          const supplier =
-            productToSupplierMap.get(det.product_id) || "Internal / Others";
+          const supplier = String(
+            productToSupplierMap.get(det.product_id) || "Internal / Others"
+          );
 
           // Add to Product Sales
           const currentProd = productSales.get(pName) || {

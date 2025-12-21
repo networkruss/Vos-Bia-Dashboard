@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AreaChart, // <--- Added this missing import
+  AreaChart, // <--- Fixed: Added this missing import
   Area,
   BarChart,
   Bar,
@@ -362,7 +362,7 @@ export default function SalesmanDashboard() {
               <div className="text-right">
                 <p className="text-gray-500">Gap to Goal</p>
                 <p className="text-xl font-bold text-red-500 flex items-center justify-end gap-1">
-                  {formatCurrency(data.target.gap)}
+                  {formatCurrency(data.target.gap)}{" "}
                   <TrendingUp className="h-4 w-4 rotate-180" />
                 </p>
               </div>
@@ -379,7 +379,7 @@ export default function SalesmanDashboard() {
             </p>
           </div>
 
-          {/* Achievement Trend - Grey Wave Area Chart */}
+          {/* Achievement Trend - Updated to Grey Wave Area Chart */}
           <div>
             <h3 className="font-bold text-md mb-4">Target Achievement Trend</h3>
             <div className="h-[300px] w-full">
@@ -396,11 +396,11 @@ export default function SalesmanDashboard() {
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor="#333333" stopOpacity={0.8} />
+                      <stop offset="5%" stopColor="#000000" stopOpacity={0.3} />
                       <stop
                         offset="95%"
-                        stopColor="#333333"
-                        stopOpacity={0.1}
+                        stopColor="#000000"
+                        stopOpacity={0.5}
                       />
                     </linearGradient>
                     <linearGradient
@@ -410,11 +410,11 @@ export default function SalesmanDashboard() {
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
+                      <stop offset="5%" stopColor="#000000" stopOpacity={0.3} />
                       <stop
                         offset="95%"
-                        stopColor="#888888"
-                        stopOpacity={0.05}
+                        stopColor="#000000"
+                        stopOpacity={0.5}
                       />
                     </linearGradient>
                   </defs>
@@ -448,14 +448,16 @@ export default function SalesmanDashboard() {
                     iconType="circle"
                   />
 
+                  {/* Target Wave (Background) */}
                   <Area
                     type="monotone"
                     dataKey="target"
                     name="Target"
-                    stroke="#333333"
+                    stroke="none"
                     fill="url(#colorTarget)"
                   />
 
+                  {/* Achieved Wave (Foreground) */}
                   <Area
                     type="monotone"
                     dataKey="achieved"
@@ -594,7 +596,7 @@ export default function SalesmanDashboard() {
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="#000000"
+                    stroke="#f0f0f0"
                   />
                   <XAxis
                     dataKey="name"
@@ -678,7 +680,7 @@ export default function SalesmanDashboard() {
                     <TableHead className="w-[100px] text-center">
                       Date
                     </TableHead>
-                    <TableHead className="w-[80px] text-center">Qty</TableHead>
+                    <TableHead className="w-20 text-center">Qty</TableHead>
                     <TableHead className="text-right">Reason</TableHead>
                   </TableRow>
                 </TableHeader>

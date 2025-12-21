@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
-async function fetchAll(url: string) {
+async function fetchAll<T = any>(url: string): Promise<T[]> {
   try {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return [];
     const json = await res.json();
-    return json.data || [];
+    return (json.data as T[]) || [];
   } catch (error) {
     console.error(`Fetch error for ${url}:`, error);
     return [];
@@ -56,16 +56,16 @@ export async function GET(request: Request) {
     ]);
 
     // 2. BUILD MAPS
-    const invoiceMap = new Map();
-    invoices.forEach((i: any) => invoiceMap.set(i.invoice_id, i));
+    const invoiceMap = new Map<string, any>();
+    invoices.forEach((i: any) => invoiceMap.set(String(i.invoice_id), i));
 
-    const returnMap = new Map();
-    returns.forEach((r: any) => returnMap.set(r.return_number, r));
+    const returnMap = new Map<string, any>();
+    returns.forEach((r: any) => returnMap.set(String(r.return_number), r));
 
-    const salesmanDivisionMap = new Map();
-    const divisionNameMap = new Map();
-    const salesmanMap = new Map();
-    const customerMap = new Map();
+    const salesmanDivisionMap = new Map<string, string>();
+    const divisionNameMap = new Map<string, string>();
+    const salesmanMap = new Map<string, string>();
+    const customerMap = new Map<string, string>();
 
     // --- CUSTOMER MAPPING ---
     customers.forEach((c: any) => {
@@ -91,18 +91,18 @@ export async function GET(request: Request) {
     });
 
     divisions.forEach((d: any) =>
-      divisionNameMap.set(d.division_id, d.division_name)
+      divisionNameMap.set(String(d.division_id), String(d.division_name))
     );
 
     salesmen.forEach((s: any) => {
-      salesmanMap.set(s.id, s.salesman_name);
-      const divName = divisionNameMap.get(s.division_id);
-      if (divName) salesmanDivisionMap.set(s.id, divName);
+      salesmanMap.set(String(s.id), String(s.salesman_name));
+      const divName = divisionNameMap.get(String(s.division_id));
+      if (divName) salesmanDivisionMap.set(String(s.id), divName);
     });
 
     // Product & Supplier Maps
-    const productParentMap = new Map();
-    const productNameMap = new Map();
+    const productParentMap = new Map<string | number, string | number>();
+    const productNameMap = new Map<string | number, string>();
     products.forEach((p: any) => {
       const pid = p.product_id;
       const parentId =
@@ -111,27 +111,31 @@ export async function GET(request: Request) {
       productNameMap.set(pid, p.product_name);
     });
 
-    const primarySupplierMap = new Map();
+    const primarySupplierMap = new Map<string | number, string | number>();
     pps.forEach((r: any) => {
       if (!primarySupplierMap.has(r.product_id)) {
         primarySupplierMap.set(r.product_id, r.supplier_id);
       }
     });
 
-    const supplierNameMap = new Map(
-      suppliers.map((s: any) => [String(s.id), s.supplier_name])
+    const supplierNameMap = new Map<string, string>(
+      suppliers.map((s: any) => [String(s.id), String(s.supplier_name)])
     );
 
     // Division Resolver
-    const getDivision = (salesmanId: any, productId: any) => {
-      const div = salesmanDivisionMap.get(salesmanId);
+    const getDivision = (
+      salesmanId: string | number,
+      productId: string | number
+    ) => {
+      const div = salesmanDivisionMap.get(String(salesmanId));
       if (div) return div;
 
       const masterProduct = productParentMap.get(productId) || productId;
       const supplierId = String(primarySupplierMap.get(masterProduct));
-      const supplier = supplierNameMap.get(supplierId) || "";
-      const sUpper = supplier.toUpperCase();
-      const pName = (productNameMap.get(productId) || "").toUpperCase();
+      const supplierRaw = supplierNameMap.get(supplierId) || "";
+      const sUpper =
+        typeof supplierRaw === "string" ? supplierRaw.toUpperCase() : "";
+      const pName = String(productNameMap.get(productId) || "").toUpperCase();
 
       if (
         sUpper.includes("SKINTEC") ||
@@ -171,11 +175,11 @@ export async function GET(request: Request) {
       }
     };
 
-    const supplierSalesMap = new Map();
-    const salesmanSalesMap = new Map();
-    const supplierBreakdownMap = new Map();
-    const productSalesPareto = new Map();
-    const customerSalesPareto = new Map();
+    const supplierSalesMap = new Map<string, number>();
+    const salesmanSalesMap = new Map<string, number>();
+    const supplierBreakdownMap = new Map<string, any>();
+    const productSalesPareto = new Map<string, number>();
+    const customerSalesPareto = new Map<string, number>();
 
     // --- PROCESS SALES ---
     invDetails.forEach((det: any) => {
@@ -210,12 +214,15 @@ export async function GET(request: Request) {
       // Filter by Active Tab
       if (reqDivision === "Overview" || reqDivision === divName) {
         const sName = resolveSupplierName(det.product_id);
-        const salesmanName =
-          salesmanMap.get(inv.salesman_id) || "Unknown Salesman";
-        const prodName =
-          productNameMap.get(det.product_id) || "Unknown Product";
-        const custName =
-          customerMap.get(inv.customer_id) || "Walk-in / Cash Sales";
+        const salesmanName = String(
+          salesmanMap.get(String(inv.salesman_id)) || "Unknown Salesman"
+        );
+        const prodName = String(
+          productNameMap.get(det.product_id) || "Unknown Product"
+        );
+        const custName = String(
+          customerMap.get(String(inv.customer_id)) || "Walk-in / Cash Sales"
+        );
 
         supplierSalesMap.set(
           sName,
@@ -231,7 +238,7 @@ export async function GET(request: Request) {
             id: sName,
             name: sName,
             totalSales: 0,
-            salesmen: new Map(),
+            salesmen: new Map<string, number>(),
           });
         }
         const supEntry = supplierBreakdownMap.get(sName);
@@ -339,19 +346,21 @@ export async function GET(request: Request) {
     const finalData: any = formatDivisionData(reqDivision, targetRawData);
 
     finalData.salesBySupplier = Array.from(supplierSalesMap.entries())
-      .map(([name, value]: any) => ({ name, value }))
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 50);
 
     finalData.salesBySalesman = Array.from(salesmanSalesMap.entries())
-      .map(([name, sales]: any) => ({ name, sales }))
+      .map(([name, sales]) => ({ name, sales }))
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 50);
 
     finalData.supplierBreakdown = Array.from(supplierBreakdownMap.values())
       .map((sup: any) => {
-        const salesmenList = Array.from(sup.salesmen.entries())
-          .map(([sName, amount]: any) => ({
+        const salesmenList = Array.from(
+          (sup.salesmen as Map<string, number>).entries()
+        )
+          .map(([sName, amount]: [string, number]) => ({
             name: sName,
             amount: amount,
             percent:
@@ -359,7 +368,10 @@ export async function GET(request: Request) {
                 ? ((amount / sup.totalSales) * 100).toFixed(1)
                 : 0,
           }))
-          .sort((a: any, b: any) => b.amount - a.amount);
+          .sort(
+            (a: { amount: number }, b: { amount: number }) =>
+              b.amount - a.amount
+          );
         return {
           id: sup.id,
           name: sup.name,
@@ -372,12 +384,12 @@ export async function GET(request: Request) {
 
     // --- PARETO: RETURNED "Walk-in" (Removed .filter) ---
     const sortedProducts = Array.from(productSalesPareto.entries())
-      .map(([name, value]: any) => ({ name, value }))
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 50);
 
     const sortedCustomers = Array.from(customerSalesPareto.entries())
-      .map(([name, value]: any) => ({ name, value }))
+      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 50);
 
@@ -400,10 +412,11 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(finalData);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error("❌ Manager API Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch data", details: error.message },
+      { error: "Failed to fetch data", details: msg },
       { status: 500 }
     );
   }
