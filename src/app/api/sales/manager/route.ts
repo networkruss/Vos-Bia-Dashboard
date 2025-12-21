@@ -1,500 +1,409 @@
-// src/app/api/sales/manager/route.ts
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = "http://100.110.197.61:8091";
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
-// Define proper types
-interface Customer {
-  id?: number;
-  customer_name?: string;
-  store_name?: string;
-  isActive?: number;
-  date_entered?: string;
-}
-
-interface Salesman {
-  id?: number;
-  salesman_name?: string;
-  salesman_code?: string;
-  employee_id?: number;
-  branch_code?: number;
-  division_id?: number;
-  isActive?: number;
-}
-
-interface Collection {
-  id?: number;
-  totalAmount?: number;
-  collection_date?: string;
-  salesman_id?: number;
-  isCancelled?: number | { type: string; data: number[] };
-  isPosted?: number | { type: string; data: number[] };
-}
-
-interface Division {
-  division_id?: number;
-  division_name?: string;
-  division_description?: string;
-}
-
-interface Branch {
-  id?: number;
-  branch_code?: string;
-  branch_name?: string;
-  branch_description?: string;
-  isActive?: number;
-}
-
-interface DirectusResponse<T> {
-  data?: T[];
-}
-
-export async function GET() {
+async function fetchAll(url: string) {
   try {
-    console.log("🔍 Manager API: Starting fetch from Directus");
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch (error) {
+    console.error(`Fetch error for ${url}:`, error);
+    return [];
+  }
+}
 
-    // Fetch data with error handling
-    let customers: Customer[] = [];
-    let salesmen: Salesman[] = [];
-    let collections: Collection[] = [];
-    let divisions: Division[] = [];
-    let branches: Branch[] = [];
+function normalizeDate(d: string | null) {
+  if (!d) return null;
+  if (d.includes("/")) {
+    const [m, day, y] = d.split("/");
+    return `${y}-${m.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  return d;
+}
 
-    try {
-      const customersRes = await fetch(
-        `${DIRECTUS_URL}/items/customer?limit=-1`,
-        {
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        }
-      );
-      if (customersRes.ok) {
-        const data: DirectusResponse<Customer> = await customersRes.json();
-        customers = data.data || [];
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const fromDate = normalizeDate(searchParams.get("fromDate"));
+    const toDate = normalizeDate(searchParams.get("toDate"));
+    const reqDivision = searchParams.get("activeTab") || "Overview";
+
+    // 1. LOAD DATA
+    const [
+      invoices,
+      invDetails,
+      returns,
+      retDetails,
+      products,
+      salesmen,
+      divisions,
+      pps,
+      suppliers,
+      customers,
+    ] = await Promise.all([
+      fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_return?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/sales_return_details?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/products?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/salesman?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/division?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/product_per_supplier?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/suppliers?limit=-1`),
+      fetchAll(`${DIRECTUS_URL}/items/customer?limit=-1`),
+    ]);
+
+    // 2. BUILD MAPS
+    const invoiceMap = new Map();
+    invoices.forEach((i: any) => invoiceMap.set(i.invoice_id, i));
+
+    const returnMap = new Map();
+    returns.forEach((r: any) => returnMap.set(r.return_number, r));
+
+    const salesmanDivisionMap = new Map();
+    const divisionNameMap = new Map();
+    const salesmanMap = new Map();
+    const customerMap = new Map();
+
+    // --- CUSTOMER MAPPING ---
+    customers.forEach((c: any) => {
+      let finalName = c.customer_name;
+      // Fallback logic
+      if (
+        !finalName ||
+        finalName === "0" ||
+        finalName === "0.00" ||
+        finalName.trim() === ""
+      ) {
+        finalName = c.store_name;
       }
-    } catch (e) {
-      console.error("Failed to fetch customers:", e);
-    }
-
-    try {
-      const salesmenRes = await fetch(
-        `${DIRECTUS_URL}/items/salesman?limit=-1`,
-        {
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        }
-      );
-      if (salesmenRes.ok) {
-        const data: DirectusResponse<Salesman> = await salesmenRes.json();
-        salesmen = data.data || [];
+      if (
+        !finalName ||
+        finalName === "0" ||
+        finalName === "0.00" ||
+        finalName.trim() === ""
+      ) {
+        finalName = "Walk-in / Cash Sales";
       }
-    } catch (e) {
-      console.error("Failed to fetch salesmen:", e);
-    }
-
-    try {
-      const collectionsRes = await fetch(
-        `${DIRECTUS_URL}/items/collection?limit=-1`,
-        {
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        }
-      );
-      if (collectionsRes.ok) {
-        const data: DirectusResponse<Collection> = await collectionsRes.json();
-        collections = data.data || [];
-      }
-    } catch (e) {
-      console.error("Failed to fetch collections:", e);
-    }
-
-    try {
-      const divisionsRes = await fetch(
-        `${DIRECTUS_URL}/items/division?limit=-1`,
-        {
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        }
-      );
-      if (divisionsRes.ok) {
-        const data: DirectusResponse<Division> = await divisionsRes.json();
-        divisions = data.data || [];
-      }
-    } catch (e) {
-      console.error("Failed to fetch divisions:", e);
-    }
-
-    try {
-      const branchesRes = await fetch(
-        `${DIRECTUS_URL}/items/branches?limit=-1`,
-        {
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        }
-      );
-      if (branchesRes.ok) {
-        const data: DirectusResponse<Branch> = await branchesRes.json();
-        branches = data.data || [];
-      }
-    } catch (e) {
-      console.error("Failed to fetch branches:", e);
-    }
-
-    console.log("✅ Fetched:", {
-      customers: customers.length,
-      salesmen: salesmen.length,
-      collections: collections.length,
-      divisions: divisions.length,
-      branches: branches.length,
+      customerMap.set(c.id, finalName);
     });
 
-    // Filter valid collections (not cancelled)
-    const validCollections = collections.filter((c) => {
-      try {
-        if (!c.isCancelled) return true;
-        if (typeof c.isCancelled === "number") return c.isCancelled !== 1;
-        if (typeof c.isCancelled === "object" && c.isCancelled.data?.[0] === 1)
-          return false;
-        return true;
-      } catch {
-        return true;
-      }
-    });
-
-    console.log(`📊 Valid collections: ${validCollections.length}`);
-
-    // Calculate total sales
-    const totalSales = validCollections.reduce((sum, c) => {
-      return sum + (Number(c.totalAmount) || 0);
-    }, 0);
-
-    // Customer metrics
-    const totalCustomers = customers.length;
-    const activeCustomers = customers.filter((c) => c.isActive === 1).length;
-
-    // New clients (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const newClients = customers.filter((c) => {
-      if (!c.date_entered) return false;
-      return new Date(c.date_entered) >= thirtyDaysAgo;
-    }).length;
-
-    const retentionRate =
-      totalCustomers > 0
-        ? Math.round((activeCustomers / totalCustomers) * 100)
-        : 0;
-    const churnRate = 100 - retentionRate;
-
-    // Sales by Division
-    const salesByDivision: Record<number, number> = {};
-    divisions.forEach((div) => {
-      if (div.division_id) salesByDivision[div.division_id] = 0;
-    });
-
-    validCollections.forEach((collection) => {
-      const salesman = salesmen.find((s) => s.id === collection.salesman_id);
-      if (salesman?.division_id) {
-        salesByDivision[salesman.division_id] =
-          (salesByDivision[salesman.division_id] || 0) +
-          (Number(collection.totalAmount) || 0);
-      }
-    });
-
-    const sortedDivisions = [...divisions].sort(
-      (a, b) => (a.division_id || 0) - (b.division_id || 0)
+    divisions.forEach((d: any) =>
+      divisionNameMap.set(d.division_id, d.division_name)
     );
 
-    const divisionLabels = sortedDivisions.map(
-      (d) => d.division_name || "Unknown"
-    );
-    const divisionValues = sortedDivisions.map(
-      (d) => salesByDivision[d.division_id!] || 0
-    );
+    salesmen.forEach((s: any) => {
+      salesmanMap.set(s.id, s.salesman_name);
+      const divName = divisionNameMap.get(s.division_id);
+      if (divName) salesmanDivisionMap.set(s.id, divName);
+    });
 
-    // Salesman Performance
-    const activeSalesmen = salesmen.filter((s) => s.isActive === 1);
-    const salesmenPerformance = activeSalesmen
-      .map((salesman) => {
-        const salesmanCollections = validCollections.filter(
-          (c) => c.salesman_id === salesman.id
-        );
-        const salesmanTotalSales = salesmanCollections.reduce(
-          (sum, c) => sum + (Number(c.totalAmount) || 0),
-          0
-        );
-        const target = 500000;
-        const performance = Math.min(
-          100,
-          Math.round((salesmanTotalSales / target) * 100)
-        );
+    // Product & Supplier Maps
+    const productParentMap = new Map();
+    const productNameMap = new Map();
+    products.forEach((p: any) => {
+      const pid = p.product_id;
+      const parentId =
+        p.parent_id === 0 || p.parent_id === null ? pid : p.parent_id;
+      productParentMap.set(pid, parentId);
+      productNameMap.set(pid, p.product_name);
+    });
 
-        return {
-          name: salesman.salesman_name || "Unknown",
-          sales: salesmanTotalSales,
-          performance,
-        };
-      })
-      .sort((a, b) => b.sales - a.sales);
-
-    const avgPerformance =
-      salesmenPerformance.length > 0
-        ? Math.round(
-            salesmenPerformance.reduce((sum, s) => sum + s.performance, 0) /
-              salesmenPerformance.length
-          )
-        : 0;
-
-    const topEmployees = salesmenPerformance.slice(0, 10).map((emp, idx) => ({
-      name: emp.name,
-      sales: emp.sales,
-      rank: idx + 1,
-      performance: emp.performance,
-    }));
-
-    // Sales Trend (last 6 months)
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const now = new Date();
-    const salesByMonth: Record<string, number> = {};
-
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-      salesByMonth[monthKey] = 0;
-    }
-
-    validCollections.forEach((collection) => {
-      if (!collection.collection_date) return;
-      const collectionDate = new Date(collection.collection_date);
-      const monthKey = `${collectionDate.getFullYear()}-${collectionDate.getMonth()}`;
-      if (salesByMonth.hasOwnProperty(monthKey)) {
-        salesByMonth[monthKey] += Number(collection.totalAmount) || 0;
+    const primarySupplierMap = new Map();
+    pps.forEach((r: any) => {
+      if (!primarySupplierMap.has(r.product_id)) {
+        primarySupplierMap.set(r.product_id, r.supplier_id);
       }
     });
 
-    const trendLabels: string[] = [];
-    const trendValues: number[] = [];
-    Object.keys(salesByMonth).forEach((key) => {
-      const [, month] = key.split("-").map(Number);
-      trendLabels.push(months[month]);
-      trendValues.push(salesByMonth[key]);
-    });
+    const supplierNameMap = new Map(
+      suppliers.map((s: any) => [String(s.id), s.supplier_name])
+    );
 
-    // Customer Growth
-    const quarters = ["Q1", "Q2", "Q3", "Q4"];
-    const currentYear = now.getFullYear();
-    const growthByQuarter: Record<string, number> = {};
-    quarters.forEach((q) => {
-      growthByQuarter[q] = 0;
-    });
+    // Division Resolver
+    const getDivision = (salesmanId: any, productId: any) => {
+      const div = salesmanDivisionMap.get(salesmanId);
+      if (div) return div;
 
-    customers.forEach((customer) => {
-      if (!customer.date_entered) return;
-      const createdDate = new Date(customer.date_entered);
-      if (createdDate.getFullYear() === currentYear) {
-        const quarter = Math.floor(createdDate.getMonth() / 3);
-        growthByQuarter[quarters[quarter]]++;
-      }
-    });
+      const masterProduct = productParentMap.get(productId) || productId;
+      const supplierId = String(primarySupplierMap.get(masterProduct));
+      const supplier = supplierNameMap.get(supplierId) || "";
+      const sUpper = supplier.toUpperCase();
+      const pName = (productNameMap.get(productId) || "").toUpperCase();
 
-    // Top Customers
-    const topCustomers = customers
-      .filter((c) => c.isActive === 1)
-      .slice(0, 10)
-      .map((c) => ({
-        name: c.customer_name || c.store_name || "Unknown",
-        revenue: 150000,
-      }));
+      if (
+        sUpper.includes("SKINTEC") ||
+        sUpper.includes("FOODSPHERE") ||
+        sUpper === "VOS" ||
+        pName.includes("CDO")
+      )
+        return "Dry Goods";
+      if (sUpper.includes("ISLA LPG") || sUpper.includes("INDUSTRIAL"))
+        return "Industrial";
+      if (sUpper.includes("MAMA PINA")) return "Mama Pina's";
 
-    // Monthly sales comparison
-    const currentMonth = now.getMonth();
-    const currentYear2 = now.getFullYear();
-
-    const currentMonthSales = validCollections.reduce((sum, c) => {
-      if (!c.collection_date) return sum;
-      const d = new Date(c.collection_date);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear2
-        ? sum + (Number(c.totalAmount) || 0)
-        : sum;
-    }, 0);
-
-    const lastMonth = currentMonth - 1;
-    const lastYear = lastMonth < 0 ? currentYear2 - 1 : currentYear2;
-    const lastMonthNum = lastMonth < 0 ? 11 : lastMonth;
-
-    const lastMonthSales = validCollections.reduce((sum, c) => {
-      if (!c.collection_date) return sum;
-      const d = new Date(c.collection_date);
-      return d.getMonth() === lastMonthNum && d.getFullYear() === lastYear
-        ? sum + (Number(c.totalAmount) || 0)
-        : sum;
-    }, 0);
-
-    const salesGrowth =
-      lastMonthSales > 0
-        ? Math.round(
-            ((currentMonthSales - lastMonthSales) / lastMonthSales) * 100
-          )
-        : 0;
-
-    const lastMonthClients = customers.filter((c) => {
-      if (!c.date_entered) return false;
-      const d = new Date(c.date_entered);
-      return d.getMonth() === lastMonthNum && d.getFullYear() === lastYear;
-    }).length;
-
-    const clientGrowth =
-      lastMonthClients > 0
-        ? Math.round(((newClients - lastMonthClients) / lastMonthClients) * 100)
-        : 0;
-
-    // Division performance
-    const lowestDivisionSales =
-      divisionValues.length > 0 ? Math.min(...divisionValues) : 0;
-    const lowestDivisionIndex = divisionValues.indexOf(lowestDivisionSales);
-    const lowestDivision = divisionLabels[lowestDivisionIndex] || "Unknown";
-    const avgDivisionSales =
-      divisionValues.length > 0
-        ? divisionValues.reduce((a, b) => a + b, 0) / divisionValues.length
-        : 0;
-    const divisionPerformance =
-      avgDivisionSales > 0
-        ? Math.round(
-            ((lowestDivisionSales - avgDivisionSales) / avgDivisionSales) * 100
-          )
-        : 0;
-
-    const topPerformer = topEmployees[0] || { name: "N/A", performance: 0 };
-
-    // Build response
-    const responseData = {
-      kpi: {
-        totalSales,
-        newClients,
-        retentionRate,
-        teamPerformance: avgPerformance,
-      },
-      salesTrend: {
-        labels: trendLabels,
-        values: trendValues,
-      },
-      departmentSales: {
-        labels: divisionLabels,
-        values: divisionValues,
-      },
-      topEmployees,
-      customers: {
-        growth: {
-          labels: quarters,
-          growth: quarters.map((q) => growthByQuarter[q]),
-        },
-        topCustomers,
-        retention: retentionRate,
-        churn: churnRate,
-        activeCount: activeCustomers,
-      },
-      summary: {
-        insights: {
-          salesGrowth: {
-            value: salesGrowth,
-            label: `Sales ${salesGrowth >= 0 ? "↑" : "↓"} ${Math.abs(
-              salesGrowth
-            )}% MoM`,
-            status:
-              salesGrowth >= 10 ? "good" : salesGrowth >= 0 ? "warning" : "bad",
-          },
-          clientGrowth: {
-            value: clientGrowth,
-            label: `New Client Growth ${
-              clientGrowth >= 0 ? "↑" : "↓"
-            } ${Math.abs(clientGrowth)}%`,
-            status:
-              clientGrowth >= 10
-                ? "good"
-                : clientGrowth >= 0
-                ? "warning"
-                : "bad",
-          },
-          divisionPerformance: {
-            value: divisionPerformance,
-            label: `${lowestDivision} Division ${
-              divisionPerformance >= 0 ? "↑" : "↓"
-            } ${Math.abs(divisionPerformance)}% vs Avg`,
-            status: divisionPerformance >= 0 ? "good" : "warning",
-          },
-          topPerformer: {
-            name: topPerformer.name,
-            value: topPerformer.performance,
-            label: `Top Rep: ${topPerformer.name} (${topPerformer.performance}%)`,
-            status: "good",
-          },
-        },
-        recentTrends: [
-          `${trendLabels[trendLabels.length - 1] || "Current"}: ₱${(
-            currentMonthSales / 1000
-          ).toFixed(0)}K sales (${salesGrowth >= 0 ? "+" : ""}${salesGrowth}%)`,
-          `New clients: ${newClients} this month`,
-          `${lowestDivision} division ${
-            divisionPerformance < 0 ? "lags" : "leads"
-          } by ${Math.abs(divisionPerformance)}%`,
-        ],
-        recommendedActions: [] as string[],
-      },
+      return "Frozen Goods";
     };
 
-    // Add recommendations
-    if (divisionPerformance < -5) {
-      responseData.summary.recommendedActions.push(
-        `Schedule coaching for ${lowestDivision} division`
-      );
-    }
-    if (topEmployees.length >= 3) {
-      responseData.summary.recommendedActions.push(
-        `Reward top ${Math.min(3, topEmployees.length)} performers`
-      );
-    }
-    if (churnRate > 10) {
-      responseData.summary.recommendedActions.push(
-        `Follow up with ${Math.round(
-          totalCustomers * (churnRate / 100)
-        )} at-risk clients`
-      );
-    }
-    if (salesGrowth < 5) {
-      responseData.summary.recommendedActions.push(
-        "Review sales strategy and targets"
-      );
-    }
-    if (responseData.summary.recommendedActions.length === 0) {
-      responseData.summary.recommendedActions.push(
-        "All metrics looking good! Keep up the great work."
-      );
+    const resolveSupplierName = (productId: number) => {
+      const masterProduct = productParentMap.get(productId) || productId;
+      const sid = String(primarySupplierMap.get(masterProduct));
+      const sName = supplierNameMap.get(sid);
+      if (sName && sName !== "Unknown Supplier") return sName;
+
+      const pName = (productNameMap.get(productId) || "").toUpperCase();
+      if (pName.includes("CDO")) return "CDO Foodsphere";
+      if (pName.includes("SKINTEC")) return "Skintec";
+      if (pName.includes("MAMA PINA")) return "Mama Pina's";
+      return "Uncategorized Supplier";
+    };
+
+    // 3. AGGREGATE DATA
+    const aggData: Record<string, any> = {
+      Overview: { goodOut: 0, badIn: 0, months: {} },
+    };
+
+    const initDiv = (div: string) => {
+      if (!aggData[div]) {
+        aggData[div] = { goodOut: 0, badIn: 0, months: {} };
+      }
+    };
+
+    const supplierSalesMap = new Map();
+    const salesmanSalesMap = new Map();
+    const supplierBreakdownMap = new Map();
+    const productSalesPareto = new Map();
+    const customerSalesPareto = new Map();
+
+    // --- PROCESS SALES ---
+    invDetails.forEach((det: any) => {
+      const invId =
+        typeof det.invoice_no === "object"
+          ? det.invoice_no?.id
+          : det.invoice_no;
+      const inv = invoiceMap.get(invId);
+      if (!inv || !inv.invoice_date) return;
+
+      const d = inv.invoice_date.substring(0, 10);
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+
+      const divName = getDivision(inv.salesman_id, det.product_id);
+      const qty = Number(det.quantity) || 0;
+      const amount = Number(det.total_amount) || 0;
+      const dateObj = new Date(inv.invoice_date);
+      const monthKey = dateObj.toLocaleString("en-US", { month: "short" });
+
+      initDiv(divName);
+      aggData[divName].goodOut += qty;
+      if (!aggData[divName].months[monthKey])
+        aggData[divName].months[monthKey] = { good: 0, bad: 0 };
+      aggData[divName].months[monthKey].good += qty;
+
+      aggData["Overview"].goodOut += qty;
+      if (!aggData["Overview"].months[monthKey])
+        aggData["Overview"].months[monthKey] = { good: 0, bad: 0 };
+      aggData["Overview"].months[monthKey].good += qty;
+
+      // Filter by Active Tab
+      if (reqDivision === "Overview" || reqDivision === divName) {
+        const sName = resolveSupplierName(det.product_id);
+        const salesmanName =
+          salesmanMap.get(inv.salesman_id) || "Unknown Salesman";
+        const prodName =
+          productNameMap.get(det.product_id) || "Unknown Product";
+        const custName =
+          customerMap.get(inv.customer_id) || "Walk-in / Cash Sales";
+
+        supplierSalesMap.set(
+          sName,
+          (supplierSalesMap.get(sName) || 0) + amount
+        );
+        salesmanSalesMap.set(
+          salesmanName,
+          (salesmanSalesMap.get(salesmanName) || 0) + amount
+        );
+
+        if (!supplierBreakdownMap.has(sName)) {
+          supplierBreakdownMap.set(sName, {
+            id: sName,
+            name: sName,
+            totalSales: 0,
+            salesmen: new Map(),
+          });
+        }
+        const supEntry = supplierBreakdownMap.get(sName);
+        supEntry.totalSales += amount;
+        supEntry.salesmen.set(
+          salesmanName,
+          (supEntry.salesmen.get(salesmanName) || 0) + amount
+        );
+
+        productSalesPareto.set(
+          prodName,
+          (productSalesPareto.get(prodName) || 0) + amount
+        );
+        customerSalesPareto.set(
+          custName,
+          (customerSalesPareto.get(custName) || 0) + amount
+        );
+      }
+    });
+
+    // --- PROCESS RETURNS ---
+    retDetails.forEach((ret: any) => {
+      const returnInfo = returnMap.get(ret.return_no);
+      if (!returnInfo || !returnInfo.return_date) return;
+      const d = returnInfo.return_date.substring(0, 10);
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+      const divName = getDivision(returnInfo.salesman_id, ret.product_id);
+      let qty = Number(ret.quantity) || 0;
+      if (qty === 0 && Number(ret.unit_price) > 0) {
+        qty = Math.round(
+          (Number(ret.total_amount) || 0) / Number(ret.unit_price)
+        );
+      }
+      const dateObj = new Date(returnInfo.return_date);
+      const monthKey = dateObj.toLocaleString("en-US", { month: "short" });
+
+      initDiv(divName);
+      aggData[divName].badIn += qty;
+      if (!aggData[divName].months[monthKey])
+        aggData[divName].months[monthKey] = { good: 0, bad: 0 };
+      aggData[divName].months[monthKey].bad += qty;
+
+      aggData["Overview"].badIn += qty;
+      if (!aggData["Overview"].months[monthKey])
+        aggData["Overview"].months[monthKey] = { good: 0, bad: 0 };
+      aggData["Overview"].months[monthKey].bad += qty;
+    });
+
+    // 4. FORMAT
+    const formatDivisionData = (divName: string, raw: any) => {
+      const totalOut = raw.goodOut;
+      const totalIn = raw.badIn;
+      const totalMovement = totalOut + totalIn;
+      const velocity =
+        totalMovement > 0 ? Math.round((totalOut / totalMovement) * 100) : 0;
+      let status: "Healthy" | "Warning" | "Critical" = "Healthy";
+      if (velocity < 80) status = "Warning";
+      if (velocity < 50) status = "Critical";
+
+      const monthOrder = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const trendData = monthOrder
+        .map((m) => ({
+          date: m,
+          goodStockOutflow: raw.months[m]?.good || 0,
+          badStockInflow: raw.months[m]?.bad || 0,
+        }))
+        .filter((t) => t.goodStockOutflow > 0 || t.badStockInflow > 0);
+
+      return {
+        division: divName,
+        goodStock: {
+          velocityRate: velocity,
+          status: status,
+          totalOutflow: totalOut,
+          totalInflow: totalOut + totalIn,
+        },
+        badStock: {
+          accumulated: totalIn,
+          status: totalIn > totalOut * 0.05 ? "High" : "Normal",
+          totalInflow: totalIn,
+        },
+        trendData: trendData,
+      };
+    };
+
+    const targetRawData = aggData[reqDivision] || {
+      goodOut: 0,
+      badIn: 0,
+      months: {},
+    };
+    const finalData: any = formatDivisionData(reqDivision, targetRawData);
+
+    finalData.salesBySupplier = Array.from(supplierSalesMap.entries())
+      .map(([name, value]: any) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 50);
+
+    finalData.salesBySalesman = Array.from(salesmanSalesMap.entries())
+      .map(([name, sales]: any) => ({ name, sales }))
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 50);
+
+    finalData.supplierBreakdown = Array.from(supplierBreakdownMap.values())
+      .map((sup: any) => {
+        const salesmenList = Array.from(sup.salesmen.entries())
+          .map(([sName, amount]: any) => ({
+            name: sName,
+            amount: amount,
+            percent:
+              sup.totalSales > 0
+                ? ((amount / sup.totalSales) * 100).toFixed(1)
+                : 0,
+          }))
+          .sort((a: any, b: any) => b.amount - a.amount);
+        return {
+          id: sup.id,
+          name: sup.name,
+          totalSales: sup.totalSales,
+          salesmen: salesmenList,
+        };
+      })
+      .sort((a, b) => b.totalSales - a.totalSales)
+      .slice(0, 100);
+
+    // --- PARETO: RETURNED "Walk-in" (Removed .filter) ---
+    const sortedProducts = Array.from(productSalesPareto.entries())
+      .map(([name, value]: any) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 50);
+
+    const sortedCustomers = Array.from(customerSalesPareto.entries())
+      .map(([name, value]: any) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 50);
+
+    finalData.pareto = {
+      products: sortedProducts,
+      customers: sortedCustomers,
+    };
+
+    if (reqDivision === "Overview") {
+      const divisionsList = [
+        "Dry Goods",
+        "Industrial",
+        "Mama Pina's",
+        "Frozen Goods",
+      ];
+      finalData.divisionBreakdown = divisionsList.map((divName) => {
+        const raw = aggData[divName] || { goodOut: 0, badIn: 0, months: {} };
+        return formatDivisionData(divName, raw);
+      });
     }
 
-    console.log("✅ Manager API: Successfully processed data");
-    return NextResponse.json(responseData);
-  } catch (error) {
-    console.error("❌ Manager API: Critical error:", error);
-
+    return NextResponse.json(finalData);
+  } catch (error: any) {
+    console.error("❌ Manager API Error:", error);
     return NextResponse.json(
-      {
-        error: "Failed to fetch dashboard data",
-        message: error instanceof Error ? error.message : "Unknown error",
-        timestamp: new Date().toISOString(),
-      },
+      { error: "Failed to fetch data", details: error.message },
       { status: 500 }
     );
   }
