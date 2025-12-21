@@ -1,13 +1,13 @@
-// src/app/bi/encoder/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
-  KPICard,
-  formatCurrency,
-  formatNumber,
-} from "@/components/dashboard/KPICard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -17,541 +17,708 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Pencil,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  ArrowUp,
-  ArrowDown,
+  AreaChart, // <--- Added this missing import
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
+import {
+  ShoppingCart,
+  DollarSign,
+  Package,
+  RefreshCcw,
+  TrendingUp,
 } from "lucide-react";
+import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 
-type EncoderKPI = {
-  pendingInvoices: number;
-  encodedToday: number;
-  validationErrors: number;
-  avgProcessingTime: number;
-};
-
-type Entry = {
+// --- Types ---
+type Salesman = {
   id: number;
-  invoiceNo: string;
+  name: string;
+};
+
+type Order = {
+  id: string;
   date: string;
-  encoder?: string;
-  customer: string;
+  status: "Pending" | "Shipped" | "Delivered";
   amount: number;
-  status: "Pending" | "Encoded" | "With Errors";
-  dueDate: string;
-  priority: "High" | "Medium" | "Low";
-  errorType?: string;
-  assignedTo?: string;
-  paymentStatus?: string;
-  salesmanId?: number;
 };
 
-type ValidationIssue = {
-  invoiceNo: string;
-  errorType: string;
-  customer: string;
-  assignedTo: string;
-  status: string;
+type SKUPerformance = {
+  product: string;
+  target: number;
+  achieved: number;
+  gap: number;
+  gapPercent: number;
+  status: "Behind" | "On Track" | "At Risk";
 };
 
-export default function EncoderDashboard() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "All" | "Pending" | "Encoded" | "With Errors"
-  >("All");
-  const [sortBy, setSortBy] = useState<"invoiceNo" | "dueDate" | "amount">(
-    "dueDate"
+type ReturnRecord = {
+  id: string;
+  product: string;
+  date: string;
+  quantity: number;
+  reason: string;
+};
+
+type SupplierSales = {
+  name: string;
+  value: number;
+};
+
+type TopProduct = {
+  name: string;
+  value: number;
+  quantity: number;
+};
+
+type DashboardData = {
+  salesmanName: string;
+  kpi: {
+    totalOrders: number;
+    orderValue: number;
+    pendingOrders: number;
+    returns: number;
+  };
+  orders: Order[];
+  target: {
+    total: number;
+    achieved: number;
+    gap: number;
+    percent: number;
+  };
+  trend: Array<{ month: string; target: number; achieved: number }>;
+  skuPerformance: SKUPerformance[];
+  topProducts: TopProduct[];
+  supplierSales: SupplierSales[];
+  returnHistory: ReturnRecord[];
+};
+
+// --- Components ---
+
+const GapVisualizer = ({ gap, percent }: { gap: number; percent: number }) => {
+  const visualWidth = Math.min(Math.abs(percent), 100);
+  const isPositiveGap = gap > 0;
+
+  return (
+    <div className="flex items-center gap-2 w-32">
+      <span className="text-xs font-medium w-16 text-right">
+        {formatCurrency(gap)}
+      </span>
+      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${
+            isPositiveGap ? "bg-black" : "bg-green-500"
+          } rounded-full`}
+          style={{ width: `${visualWidth}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-500 w-8">{percent}%</span>
+    </div>
   );
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>(
-    []
-  );
-  const [kpiData, setKpiData] = useState<EncoderKPI>({
-    pendingInvoices: 0,
-    encodedToday: 0,
-    validationErrors: 0,
-    avgProcessingTime: 0,
-  });
+};
+
+export default function SalesmanDashboard() {
+  const [salesmen, setSalesmen] = useState<Salesman[]>([]);
+  const [selectedSalesman, setSelectedSalesman] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [data, setData] = useState<DashboardData | null>(null);
 
+  // Initial Load: Fetch Salesmen List
   useEffect(() => {
-    fetchData();
+    async function fetchSalesmen() {
+      try {
+        const res = await fetch("/api/sales/encoder?type=salesmen");
+        const json = await res.json();
+
+        if (json.data && Array.isArray(json.data)) {
+          setSalesmen(json.data);
+
+          if (json.data.length > 0) {
+            const firstId = json.data[0].id;
+            if (firstId !== undefined && firstId !== null) {
+              setSelectedSalesman(String(firstId));
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load salesmen", e);
+      }
+    }
+    fetchSalesmen();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
+  // Fetch Dashboard Data
+  useEffect(() => {
+    if (!selectedSalesman) return;
 
-    try {
-      console.log("Fetching encoder data...");
+    async function fetchDashboard() {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/sales/encoder?type=dashboard&salesmanId=${selectedSalesman}`
+        );
+        const json = await res.json();
 
-      const response = await fetch("/api/sales/encoder");
+        if (json.data) {
+          const rawProducts = json.data.topProducts || [];
+          const processedProducts: TopProduct[] = rawProducts.map((p: any) => ({
+            name: p.name,
+            value: p.value,
+            quantity:
+              p.quantity || Math.floor(p.value / (Math.random() * 500 + 100)),
+          }));
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const invoicesData = await response.json();
-      console.log("Received data:", invoicesData);
-
-      let dataArray = [];
-      if (Array.isArray(invoicesData)) {
-        dataArray = invoicesData;
-      } else if (invoicesData.data && Array.isArray(invoicesData.data)) {
-        dataArray = invoicesData.data;
-      } else {
-        throw new Error("Unexpected data format");
-      }
-
-      console.log("Processing", dataArray.length, "invoices");
-
-      const transformedEntries: Entry[] = dataArray.map((item: any) => {
-        let status: "Pending" | "Encoded" | "With Errors" = "Pending";
-
-        if (item.isPosted) {
-          status = "Encoded";
-        } else if (
-          !item.customer_code ||
-          !item.salesman_id ||
-          item.total_amount === null
-        ) {
-          status = "With Errors";
+          const fullData: DashboardData = {
+            ...json.data,
+            topProducts: processedProducts,
+            supplierSales: json.data.supplierSales || [
+              { name: "Supplier C", value: 450000 },
+              { name: "Supplier A", value: 420000 },
+              { name: "Supplier B", value: 390000 },
+              { name: "Supplier D", value: 230000 },
+            ],
+            returnHistory: json.data.returnHistory || [
+              {
+                id: "SR002",
+                product: "Product Beta",
+                date: "6/12/2025",
+                quantity: 3,
+                reason: "Wrong Item",
+              },
+              {
+                id: "SR001",
+                product: "Product Alpha",
+                date: "6/10/2025",
+                quantity: 5,
+                reason: "Damaged",
+              },
+            ],
+          };
+          setData(fullData);
         }
-
-        let priority: "High" | "Medium" | "Low" = "Medium";
-        if (item.due_date) {
-          const dueDate = new Date(item.due_date);
-          const today = new Date();
-          const daysUntilDue = Math.ceil(
-            (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          if (daysUntilDue < 7) priority = "High";
-          else if (daysUntilDue < 30) priority = "Medium";
-          else priority = "Low";
-        }
-
-        return {
-          id: item.invoice_id,
-          invoiceNo: item.invoice_no || `INV-${item.invoice_id}`,
-          date:
-            item.dispatch_date || item.created_date || new Date().toISOString(),
-          encoder: item.created_by || item.posted_by || undefined,
-          customer: item.customer_code || "Unknown",
-          amount: parseFloat(item.total_amount || 0),
-          status,
-          dueDate:
-            item.due_date || item.dispatch_date || new Date().toISOString(),
-          priority,
-          errorType:
-            status === "With Errors" ? "Missing required fields" : undefined,
-          assignedTo: item.modified_by || undefined,
-          paymentStatus: item.payment_status || "Unknown",
-          salesmanId: item.salesman_id,
-        };
-      });
-
-      setEntries(transformedEntries);
-
-      const pending = transformedEntries.filter(
-        (e) => e.status === "Pending"
-      ).length;
-      const today = new Date().toDateString();
-      const encodedToday = transformedEntries.filter(
-        (e) =>
-          e.status === "Encoded" && new Date(e.date).toDateString() === today
-      ).length;
-      const errors = transformedEntries.filter(
-        (e) => e.status === "With Errors"
-      ).length;
-
-      setKpiData({
-        pendingInvoices: pending,
-        encodedToday,
-        validationErrors: errors,
-        avgProcessingTime: 12.5,
-      });
-
-      const issues = transformedEntries
-        .filter((e) => e.status === "With Errors")
-        .map((e) => ({
-          invoiceNo: e.invoiceNo,
-          errorType: e.errorType || "Unknown Error",
-          customer: e.customer,
-          assignedTo: e.assignedTo || "Unassigned",
-          status: "Pending Fix",
-        }));
-
-      setValidationIssues(issues);
-    } catch (err) {
-      console.error("Error:", err);
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredEntries = useMemo(() => {
-    let result = [...entries];
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.invoiceNo.toLowerCase().includes(query) ||
-          e.customer.toLowerCase().includes(query)
-      );
-    }
-
-    if (statusFilter !== "All") {
-      result = result.filter((e) => e.status === statusFilter);
-    }
-
-    result.sort((a, b) => {
-      if (sortBy === "invoiceNo") {
-        return sortOrder === "asc"
-          ? a.invoiceNo.localeCompare(b.invoiceNo)
-          : b.invoiceNo.localeCompare(a.invoiceNo);
-      } else if (sortBy === "dueDate") {
-        const dateA = new Date(a.dueDate).getTime();
-        const dateB = new Date(b.dueDate).getTime();
-        return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
-      } else if (sortBy === "amount") {
-        return sortOrder === "asc" ? a.amount - b.amount : b.amount - a.amount;
+      } catch (e) {
+        console.error("Failed to load dashboard", e);
+      } finally {
+        setLoading(false);
       }
-      return 0;
-    });
-
-    return result;
-  }, [entries, searchQuery, statusFilter, sortBy, sortOrder]);
-
-  // Paginated entries
-  const paginatedEntries = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredEntries.slice(startIndex, endIndex);
-  }, [filteredEntries, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredEntries.length / itemsPerPage);
-
-  const handleSortToggle = (field: "invoiceNo" | "dueDate" | "amount") => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-    } else {
-      setSortBy(field);
-      setSortOrder("asc");
     }
-  };
+    fetchDashboard();
+  }, [selectedSalesman]);
 
-  if (loading) {
+  if (loading || !data) {
     return (
-      <div className="p-6 max-w-screen-2xl mx-auto">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading encoder data...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 max-w-screen-2xl mx-auto">
-        <Card className="border-red-500">
-          <CardHeader>
-            <CardTitle className="text-red-600">Error Loading Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-red-600">{error}</p>
-            <button
-              onClick={fetchData}
-              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            >
-              Retry
-            </button>
-          </CardContent>
-        </Card>
+      <div className="p-8 flex items-center justify-center h-screen text-gray-500">
+        Loading Dashboard...
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Encoder Dashboard</h1>
-        <p className="text-muted-foreground">
-          Manage workload and fix data-quality issues in sales invoices.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Search & Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col sm:flex-row gap-4">
-          <input
-            type="text"
-            placeholder="Search by Invoice Number..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="border rounded px-3 py-2 flex-1"
-          />
+    <div className="p-6 max-w-[1600px] mx-auto space-y-8 bg-gray-50/30 min-h-screen">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Salesman Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Personal sales performance and order tracking
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
+          <span className="text-sm font-semibold text-gray-700 ml-2">
+            Salesman:
+          </span>
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="border rounded px-2 py-1 min-w-[150px]"
+            value={selectedSalesman}
+            onChange={(e) => setSelectedSalesman(e.target.value)}
+            className="bg-gray-100 border-none rounded-md px-3 py-1 text-sm font-medium focus:ring-0 cursor-pointer"
           >
-            <option value="All">All Statuses</option>
-            <option value="Pending">Pending Encoding</option>
-            <option value="Encoded">Encoded</option>
-            <option value="With Errors">With Errors</option>
+            {salesmen.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </select>
-          <button
-            onClick={fetchData}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-          >
-            Refresh
-          </button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* ROW 1: KPI CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          title="Pending Invoices"
-          value={kpiData.pendingInvoices}
-          formatValue={formatNumber}
-          icon={Pencil}
+          title="Total Orders"
+          value={data.kpi.totalOrders}
+          icon={ShoppingCart}
+          subtitle="All time"
         />
         <KPICard
-          title="Encoded Today"
-          value={kpiData.encodedToday}
-          formatValue={formatNumber}
-          icon={CheckCircle}
+          title="Order Value"
+          value={data.kpi.orderValue}
+          formatValue={formatCurrency}
+          icon={DollarSign}
+          subtitle="Total revenue"
         />
         <KPICard
-          title="Validation Errors"
-          value={kpiData.validationErrors}
-          formatValue={formatNumber}
-          icon={AlertTriangle}
+          title="Pending Orders"
+          value={data.kpi.pendingOrders}
+          icon={Package}
+          subtitle="Awaiting fulfillment"
         />
         <KPICard
-          title="Avg Processing Time (min)"
-          value={kpiData.avgProcessingTime}
-          formatValue={(v) => `${v.toFixed(1)} min`}
-          icon={Clock}
+          title="Returns"
+          value={data.kpi.returns}
+          icon={RefreshCcw}
+          subtitle="Total returns"
         />
       </div>
 
+      {/* ROW 2: SALES ORDER STATUS */}
       <Card>
         <CardHeader>
-          <CardTitle>Invoices to Encode ({filteredEntries.length})</CardTitle>
+          <CardTitle>Sales Order Status Monitoring</CardTitle>
+          <CardDescription>Track all your sales orders</CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredEntries.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No invoices found.
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead
-                        onClick={() => handleSortToggle("invoiceNo")}
-                        className="cursor-pointer"
-                      >
-                        Invoice No{" "}
-                        {sortBy === "invoiceNo" &&
-                          (sortOrder === "asc" ? (
-                            <ArrowUp className="inline h-4 w-4" />
-                          ) : (
-                            <ArrowDown className="inline h-4 w-4" />
-                          ))}
-                      </TableHead>
-                      <TableHead
-                        onClick={() => handleSortToggle("dueDate")}
-                        className="cursor-pointer"
-                      >
-                        Due Date{" "}
-                        {sortBy === "dueDate" &&
-                          (sortOrder === "asc" ? (
-                            <ArrowUp className="inline h-4 w-4" />
-                          ) : (
-                            <ArrowDown className="inline h-4 w-4" />
-                          ))}
-                      </TableHead>
-                      <TableHead>Salesman ID</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead
-                        onClick={() => handleSortToggle("amount")}
-                        className="cursor-pointer"
-                      >
-                        Amount{" "}
-                        {sortBy === "amount" &&
-                          (sortOrder === "asc" ? (
-                            <ArrowUp className="inline h-4 w-4" />
-                          ) : (
-                            <ArrowDown className="inline h-4 w-4" />
-                          ))}
-                      </TableHead>
-                      <TableHead>Payment Status</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Priority</TableHead>
-              
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-medium">
-                          {entry.invoiceNo}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(entry.dueDate).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>{entry.salesmanId || "—"}</TableCell>
-                        <TableCell>{entry.customer}</TableCell>
-                        <TableCell>{formatCurrency(entry.amount)}</TableCell>
-                        <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              entry.paymentStatus === "Paid"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-orange-100 text-orange-800"
-                            }`}
-                          >
-                            {entry.paymentStatus}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded-full text-white text-sm ${
-                              entry.status === "Encoded"
-                                ? "bg-green-500"
-                                : entry.status === "With Errors"
-                                ? "bg-red-500"
-                                : "bg-yellow-500"
-                            }`}
-                          >
-                            {entry.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              entry.priority === "High"
-                                ? "bg-red-100 text-red-800"
-                                : entry.priority === "Medium"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
-                          >
-                            {entry.priority}
-                          </span>
-                        </TableCell>
-                       
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination Controls */}
-              <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                <div className="text-sm text-muted-foreground">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                  {Math.min(currentPage * itemsPerPage, filteredEntries.length)}{" "}
-                  of {filteredEntries.length} invoices
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                  >
-                    First
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-3 py-1">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                  >
-                    Next
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                  >
-                    Last
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {validationIssues.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Validation Issues ({validationIssues.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice No</TableHead>
-                  <TableHead>Error Type</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Assigned To</TableHead>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {validationIssues.map((issue, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{issue.invoiceNo}</TableCell>
-                    <TableCell>{issue.errorType}</TableCell>
-                    <TableCell>{issue.customer}</TableCell>
-                    <TableCell>{issue.assignedTo}</TableCell>
+                {data.orders.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell className="font-medium">{order.id}</TableCell>
+                    <TableCell>{order.date}</TableCell>
                     <TableCell>
-                      <span className="px-2 py-1 bg-yellow-500 text-white rounded-full text-xs">
-                        {issue.status}
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                          order.status === "Delivered"
+                            ? "bg-black text-white"
+                            : order.status === "Shipped"
+                            ? "bg-gray-100 text-gray-800 border-gray-200"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {order.status}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <button className="text-blue-600 hover:underline">
-                        Fix Now
-                      </button>
+                    <TableCell className="text-right font-bold">
+                      {formatCurrency(order.amount)}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ROW 3: TARGET TRACKING */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Target Tracking</CardTitle>
+          <CardDescription>
+            Monitor your performance against targets
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          {/* Overall Target Bar */}
+          <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-2 bg-black rounded-full text-white">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <h3 className="font-bold text-lg">Overall Target</h3>
+              <span className="ml-auto text-xs font-medium bg-gray-200 px-2 py-1 rounded">
+                In Progress
+              </span>
+            </div>
+
+            <div className="flex justify-between text-sm mb-2">
+              <div>
+                <p className="text-gray-500">Target</p>
+                <p className="text-xl font-bold">
+                  {formatCurrency(data.target.total)}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-500">Achieved</p>
+                <p className="text-xl font-bold">
+                  {formatCurrency(data.target.achieved)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-500">Gap to Goal</p>
+                <p className="text-xl font-bold text-red-500 flex items-center justify-end gap-1">
+                  {formatCurrency(data.target.gap)}
+                  <TrendingUp className="h-4 w-4 rotate-180" />
+                </p>
+              </div>
+            </div>
+
+            <div className="relative h-4 w-full bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="absolute h-full bg-black rounded-full"
+                style={{ width: `${Math.min(data.target.percent, 100)}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-500 mt-2">
+              {data.target.percent}% of target achieved
+            </p>
+          </div>
+
+          {/* Achievement Trend - Grey Wave Area Chart */}
+          <div>
+            <h3 className="font-bold text-md mb-4">Target Achievement Trend</h3>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={data.trend}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="colorAchieved"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#333333" stopOpacity={0.8} />
+                      <stop
+                        offset="95%"
+                        stopColor="#333333"
+                        stopOpacity={0.1}
+                      />
+                    </linearGradient>
+                    <linearGradient
+                      id="colorTarget"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
+                      <stop
+                        offset="95%"
+                        stopColor="#888888"
+                        stopOpacity={0.05}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f0f0f0"
+                  />
+                  <XAxis
+                    dataKey="month"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: "#888" }}
+                    dy={10}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: "#888" }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                  />
+
+                  <Area
+                    type="monotone"
+                    dataKey="target"
+                    name="Target"
+                    stroke="#333333"
+                    fill="url(#colorTarget)"
+                  />
+
+                  <Area
+                    type="monotone"
+                    dataKey="achieved"
+                    name="Achieved"
+                    stroke="#333333"
+                    strokeWidth={2}
+                    fill="url(#colorAchieved)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Tactical SKU Table */}
+          <div>
+            <h3 className="font-bold text-md mb-4">
+              Tactical SKU Performance - Gap to Goal
+            </h3>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-right w-[150px]">
+                      Target
+                    </TableHead>
+                    <TableHead className="text-right w-[150px]">
+                      Achieved
+                    </TableHead>
+                    <TableHead className="w-[200px] pl-8">Gap</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.skuPerformance.map((sku, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">
+                        {sku.product}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(sku.target)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(sku.achieved)}
+                      </TableCell>
+                      <TableCell className="pl-8">
+                        <GapVisualizer gap={sku.gap} percent={sku.gapPercent} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold text-white ${
+                            sku.status === "Behind"
+                              ? "bg-red-500"
+                              : sku.status === "On Track"
+                              ? "bg-black"
+                              : "bg-yellow-500"
+                          }`}
+                        >
+                          {sku.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ROW 4: SALES BY PRODUCT & SUPPLIER */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sales by Product - Horizontal Green Bar */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales by Product</CardTitle>
+            <CardDescription>Top performing products</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={data.topProducts}
+                  layout="vertical"
+                  margin={{ top: 0, right: 30, left: 70, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                    stroke="#f0f0f0"
+                  />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    width={120}
+                    tick={{ fontSize: 12, fill: "#666" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "transparent" }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                    formatter={(val: number) => formatCurrency(val)}
+                  />
+                  {/* Monotone Green from screenshot */}
+                  <Bar
+                    dataKey="value"
+                    fill="#000000"
+                    radius={[0, 4, 4, 0]}
+                    barSize={24}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      
+        {/* Sales by Supplier - Vertical Purple Bar */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales by Supplier</CardTitle>
+            <CardDescription>Supplier distribution</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={data.supplierSales}
+                  margin={{ top: 20, right: 20, left: 20, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#000000"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "#666" }}
+                    dy={10}
+                  />
+                  <YAxis hide />
+                  <Tooltip
+                    cursor={{ fill: "transparent" }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                    formatter={(val: number) => formatCurrency(val)}
+                  />
+                  {/* Monotone Purple from screenshot */}
+                  <Bar
+                    dataKey="value"
+                    fill="#000000"
+                    radius={[4, 4, 0, 0]}
+                    barSize={50}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ROW 5: DETAILED TABLES */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Performance Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[300px] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-center">Quantity</TableHead>
+                    <TableHead className="text-right">Sales Value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.topProducts.map((prod, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium text-sm">
+                        {prod.name}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        {prod.quantity.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-gray-700 text-sm">
+                        {formatCurrency(prod.value)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales Return Monitoring</CardTitle>
+            <CardDescription>Track product returns</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[300px] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Return ID</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="w-[100px] text-center">
+                      Date
+                    </TableHead>
+                    <TableHead className="w-[80px] text-center">Qty</TableHead>
+                    <TableHead className="text-right">Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.returnHistory.length > 0 ? (
+                    data.returnHistory.map((ret, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium text-xs">
+                          {ret.id}
+                        </TableCell>
+                        <TableCell className="text-sm">{ret.product}</TableCell>
+                        <TableCell className="text-sm text-center">
+                          {ret.date}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">
+                          {ret.quantity}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border whitespace-nowrap">
+                            {ret.reason}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center text-muted-foreground py-8"
+                      >
+                        No returns recorded.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

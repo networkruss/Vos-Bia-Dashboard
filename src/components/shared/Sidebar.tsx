@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
     role: ["supervisor", "executive"], // Add executive here
   },
   {
-    title: "Encoder Dashboard",
+    title: "Salesman Dashboard",
     href: "/bi/encoder",
     icon: Package,
     role: ["encoder", "executive"], // Add executive here
