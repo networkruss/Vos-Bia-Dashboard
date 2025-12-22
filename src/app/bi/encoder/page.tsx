@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AreaChart, // <--- Fixed: Added this missing import
+  AreaChart,
   Area,
   BarChart,
   Bar,
@@ -34,6 +34,8 @@ import {
   Package,
   RefreshCcw,
   TrendingUp,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 
@@ -130,6 +132,11 @@ export default function SalesmanDashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
 
+  // --- Pagination State ---
+  const [returnPage, setReturnPage] = useState(1);
+  const [productPage, setProductPage] = useState(1); // Added for Product pagination
+  const itemsPerPage = 5;
+
   // Initial Load: Fetch Salesmen List
   useEffect(() => {
     async function fetchSalesmen() {
@@ -160,6 +167,8 @@ export default function SalesmanDashboard() {
 
     async function fetchDashboard() {
       setLoading(true);
+      setReturnPage(1); // Reset pagination when salesman changes
+      setProductPage(1); // Reset product pagination
       try {
         const res = await fetch(
           `/api/sales/encoder?type=dashboard&salesmanId=${selectedSalesman}`
@@ -199,6 +208,34 @@ export default function SalesmanDashboard() {
                 quantity: 5,
                 reason: "Damaged",
               },
+              {
+                id: "SR003",
+                product: "Product Gamma",
+                date: "6/09/2025",
+                quantity: 1,
+                reason: "Defective",
+              },
+              {
+                id: "SR004",
+                product: "Product Delta",
+                date: "6/08/2025",
+                quantity: 2,
+                reason: "Wrong Color",
+              },
+              {
+                id: "SR005",
+                product: "Product Epsilon",
+                date: "6/07/2025",
+                quantity: 10,
+                reason: "Expired",
+              },
+              {
+                id: "SR006",
+                product: "Product Zeta",
+                date: "6/06/2025",
+                quantity: 4,
+                reason: "Damaged",
+              },
             ],
           };
           setData(fullData);
@@ -211,6 +248,46 @@ export default function SalesmanDashboard() {
     }
     fetchDashboard();
   }, [selectedSalesman]);
+
+  // --- Pagination Logic: Returns ---
+  const totalReturnPages = data
+    ? Math.ceil(data.returnHistory.length / itemsPerPage)
+    : 0;
+
+  const currentReturns = data
+    ? data.returnHistory.slice(
+        (returnPage - 1) * itemsPerPage,
+        returnPage * itemsPerPage
+      )
+    : [];
+
+  const handleNextReturnPage = () => {
+    if (returnPage < totalReturnPages) setReturnPage(returnPage + 1);
+  };
+
+  const handlePrevReturnPage = () => {
+    if (returnPage > 1) setReturnPage(returnPage - 1);
+  };
+
+  // --- Pagination Logic: Products ---
+  const totalProductPages = data
+    ? Math.ceil(data.topProducts.length / itemsPerPage)
+    : 0;
+
+  const currentProducts = data
+    ? data.topProducts.slice(
+        (productPage - 1) * itemsPerPage,
+        productPage * itemsPerPage
+      )
+    : [];
+
+  const handleNextProductPage = () => {
+    if (productPage < totalProductPages) setProductPage(productPage + 1);
+  };
+
+  const handlePrevProductPage = () => {
+    if (productPage > 1) setProductPage(productPage - 1);
+  };
 
   if (loading || !data) {
     return (
@@ -379,7 +456,7 @@ export default function SalesmanDashboard() {
             </p>
           </div>
 
-          {/* Achievement Trend - Updated to Grey Wave Area Chart */}
+          {/* Achievement Trend */}
           <div>
             <h3 className="font-bold text-md mb-4">Target Achievement Trend</h3>
             <div className="h-[300px] w-full">
@@ -447,8 +524,6 @@ export default function SalesmanDashboard() {
                     height={36}
                     iconType="circle"
                   />
-
-                  {/* Target Wave (Background) */}
                   <Area
                     type="monotone"
                     dataKey="target"
@@ -456,8 +531,6 @@ export default function SalesmanDashboard() {
                     stroke="none"
                     fill="url(#colorTarget)"
                   />
-
-                  {/* Achieved Wave (Foreground) */}
                   <Area
                     type="monotone"
                     dataKey="achieved"
@@ -530,7 +603,7 @@ export default function SalesmanDashboard() {
 
       {/* ROW 4: SALES BY PRODUCT & SUPPLIER */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales by Product - Horizontal Green Bar */}
+        {/* Sales by Product */}
         <Card>
           <CardHeader>
             <CardTitle>Sales by Product</CardTitle>
@@ -567,7 +640,6 @@ export default function SalesmanDashboard() {
                     }}
                     formatter={(val: number) => formatCurrency(val)}
                   />
-                  {/* Monotone Green from screenshot */}
                   <Bar
                     dataKey="value"
                     fill="#000000"
@@ -580,7 +652,7 @@ export default function SalesmanDashboard() {
           </CardContent>
         </Card>
 
-        {/* Sales by Supplier - Vertical Purple Bar */}
+        {/* Sales by Supplier */}
         <Card>
           <CardHeader>
             <CardTitle>Sales by Supplier</CardTitle>
@@ -615,7 +687,6 @@ export default function SalesmanDashboard() {
                     }}
                     formatter={(val: number) => formatCurrency(val)}
                   />
-                  {/* Monotone Purple from screenshot */}
                   <Bar
                     dataKey="value"
                     fill="#000000"
@@ -636,7 +707,8 @@ export default function SalesmanDashboard() {
             <CardTitle>Product Performance Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[300px] overflow-auto">
+            {/* UPDATED: Removed scroll container wrapper */}
+            <div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -646,7 +718,8 @@ export default function SalesmanDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.topProducts.map((prod, idx) => (
+                  {/* Map over currentProducts instead of all data */}
+                  {currentProducts.map((prod, idx) => (
                     <TableRow key={idx}>
                       <TableCell className="font-medium text-sm">
                         {prod.name}
@@ -662,6 +735,31 @@ export default function SalesmanDashboard() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls for Products */}
+            {data.topProducts.length > 0 && (
+              <div className="flex items-center justify-between mt-4 border-t pt-4">
+                <button
+                  onClick={handlePrevProductPage}
+                  disabled={productPage === 1}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <span className="text-sm text-gray-500">
+                  Page {productPage} of {totalProductPages}
+                </span>
+                <button
+                  onClick={handleNextProductPage}
+                  disabled={productPage === totalProductPages}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -671,7 +769,8 @@ export default function SalesmanDashboard() {
             <CardDescription>Track product returns</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[300px] overflow-auto">
+            {/* Removed scroll container wrapper */}
+            <div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -685,8 +784,8 @@ export default function SalesmanDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.returnHistory.length > 0 ? (
-                    data.returnHistory.map((ret, idx) => (
+                  {currentReturns.length > 0 ? (
+                    currentReturns.map((ret, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="font-medium text-xs">
                           {ret.id}
@@ -718,6 +817,31 @@ export default function SalesmanDashboard() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls for Returns */}
+            {data.returnHistory.length > 0 && (
+              <div className="flex items-center justify-between mt-4 border-t pt-4">
+                <button
+                  onClick={handlePrevReturnPage}
+                  disabled={returnPage === 1}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <span className="text-sm text-gray-500">
+                  Page {returnPage} of {totalReturnPages}
+                </span>
+                <button
+                  onClick={handleNextReturnPage}
+                  disabled={returnPage === totalReturnPages}
+                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
