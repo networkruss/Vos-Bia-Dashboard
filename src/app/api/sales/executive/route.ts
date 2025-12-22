@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
+/* -------------------------------------------------------------------------- */
+/* FETCH HELPERS                                                              */
+/* -------------------------------------------------------------------------- */
+
 async function fetchAll<T = any>(url: string): Promise<T[]> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 300000);
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 mins
 
   try {
     const res = await fetch(url, {
@@ -20,13 +24,24 @@ async function fetchAll<T = any>(url: string): Promise<T[]> {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* HELPERS                                                                    */
+/* -------------------------------------------------------------------------- */
+
 function normalizeDate(d: string | null) {
   if (!d) return null;
+
+  // Handle DD/MM/YYYY format (Common in PH)
   if (d.includes("/")) {
-    const [m, day, y] = d.split("/");
-    return `${y}-${m.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    const parts = d.split("/");
+    if (parts.length === 3) {
+      // Assuming DD/MM/YYYY based on your usage (01/12/2025)
+      // We convert to ISO YYYY-MM-DD for string comparison
+      const [day, month, year] = parts;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
   }
-  return d;
+  return d; // Assume already YYYY-MM-DD
 }
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
@@ -38,6 +53,10 @@ function isTruthy(field: any) {
   return false;
 }
 
+/* -------------------------------------------------------------------------- */
+/* MAIN ROUTE                                                                 */
+/* -------------------------------------------------------------------------- */
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -45,6 +64,10 @@ export async function GET(request: Request) {
     const toDate = normalizeDate(searchParams.get("toDate"));
     const rawDiv = searchParams.get("division");
     const divisionFilter = rawDiv === "all" ? null : rawDiv;
+
+    /* ---------------------------------------------------------------------- */
+    /* LOAD DATA                                                              */
+    /* ---------------------------------------------------------------------- */
 
     const [
       invoices,
@@ -70,13 +93,18 @@ export async function GET(request: Request) {
       fetchAll(`${DIRECTUS_URL}/items/collection?limit=-1`),
     ]);
 
-    // --- Build Maps ---
+    /* ---------------------------------------------------------------------- */
+    /* BUILD MAPS                                                             */
+    /* ---------------------------------------------------------------------- */
+
     const monthSet = new Set<string>();
     const invoiceMap = new Map<string, any>();
 
     invoices.forEach((i: any) => {
       if (!i.invoice_date) return;
       const d = i.invoice_date.substring(0, 10);
+
+      // Strict Date Filtering
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
 
@@ -141,22 +169,30 @@ export async function GET(request: Request) {
       });
     });
 
-    // --- Aggregation Containers ---
+    /* ---------------------------------------------------------------------- */
+    /* AGGREGATION CONTAINERS                                                 */
+    /* ---------------------------------------------------------------------- */
+
     const heatmapMap = new Map<string, Map<string, any>>();
     const supplierChartMap = new Map<string, Map<string, number>>();
-    const monthlyTotals = new Map<string, number>();
+    const divisionTotals = new Map<string, number>();
 
-    // NEW: Detailed stats per division to calculate KPIs individually
+    const monthlyStats = new Map<
+      string,
+      { sales: number; returns: number; cogs: number; collections: number }
+    >();
+    sortedMonths.forEach((m) => {
+      monthlyStats.set(m, { sales: 0, returns: 0, cogs: 0, collections: 0 });
+    });
+
     const divisionStats = new Map<
       string,
       { sales: number; returns: number; cogs: number; collections: number }
     >();
-
-    // Initialize containers
-    sortedMonths.forEach((m) => monthlyTotals.set(m, 0));
     divisions.forEach((d: any) => {
       const name = String(d.division_name || d.division);
       if (name) {
+        divisionTotals.set(name, 0);
         divisionStats.set(name, {
           sales: 0,
           returns: 0,
@@ -165,12 +201,31 @@ export async function GET(request: Request) {
         });
       }
     });
+    // Ensure standard divisions exist in stats even if DB list is partial
+    [
+      "Dry Goods",
+      "Industrial",
+      "Mama Pina's",
+      "Frozen Goods",
+      "Unassigned",
+    ].forEach((name) => {
+      if (!divisionStats.has(name))
+        divisionStats.set(name, {
+          sales: 0,
+          returns: 0,
+          cogs: 0,
+          collections: 0,
+        });
+    });
 
     let grandTotalSales = 0;
     let grandTotalReturns = 0;
     let grandTotalCOGS = 0;
 
-    // --- Process Sales ---
+    /* ---------------------------------------------------------------------- */
+    /* PROCESS SALES DETAILS                                                  */
+    /* ---------------------------------------------------------------------- */
+
     details.forEach((det: any) => {
       const invId =
         typeof det.invoice_no === "object"
@@ -189,7 +244,7 @@ export async function GET(request: Request) {
       const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
       let division = divisionId ? divisionNameMap.get(divisionId) : undefined;
 
-      // Fallback Logic
+      // --- IMPROVED FALLBACK LOGIC ---
       if (!division || division === "Unassigned") {
         if (supplier === "VOS" || supplier === "VOS BIA")
           division = "Dry Goods";
@@ -199,14 +254,16 @@ export async function GET(request: Request) {
           (typeof supplier === "string" && supplier.includes("Industrial"))
         )
           division = "Industrial";
-        else division = "Frozen Goods";
+        // CRITICAL FIX: Only default to "Frozen Goods" if we have a valid supplier that is NOT matched above.
+        // If supplier is "No Supplier", put it in "Unassigned" so it doesn't inflate Frozen Goods.
+        else if (supplier && supplier !== "No Supplier")
+          division = "Frozen Goods";
+        else division = "Unassigned";
       }
 
-      // Filter check
       if (divisionFilter && division !== divisionFilter) return;
 
       const month = inv.invoice_date.substring(0, 7);
-
       const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
       const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
       const returnAmount = ret.total - ret.disc;
@@ -219,12 +276,12 @@ export async function GET(request: Request) {
       const netQty = (+det.quantity || 0) - returnedQtyApprox;
       const cogs = unitCost * netQty;
 
-      // Global Totals
+      // Accumulate
       grandTotalSales += net;
       grandTotalReturns += returnAmount;
       grandTotalCOGS += cogs;
 
-      // Division Specific Totals
+      // Division Stats
       if (!divisionStats.has(division))
         divisionStats.set(division, {
           sales: 0,
@@ -232,16 +289,25 @@ export async function GET(request: Request) {
           cogs: 0,
           collections: 0,
         });
-      const stats = divisionStats.get(division)!;
-      stats.sales += net;
-      stats.returns += returnAmount;
-      stats.cogs += cogs;
+      const dStat = divisionStats.get(division)!;
+      dStat.sales += net;
+      dStat.returns += returnAmount;
+      dStat.cogs += cogs;
 
-      monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + net);
+      // Division Totals for Bar Chart
+      divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
+
+      // Monthly Stats
+      const mStat = monthlyStats.get(month);
+      if (mStat) {
+        mStat.sales += net;
+        mStat.returns += returnAmount;
+        mStat.cogs += cogs;
+      }
 
       if (net === 0) return;
 
-      // Heatmap & Charts
+      // Heatmap
       if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
       const divMap = heatmapMap.get(division)!;
       if (!divMap.has(supplier)) {
@@ -253,13 +319,17 @@ export async function GET(request: Request) {
       if (hRow[month] !== undefined) hRow[month] += net;
       hRow.total += net;
 
+      // Chart
       if (!supplierChartMap.has(division))
         supplierChartMap.set(division, new Map());
       const chartMap = supplierChartMap.get(division)!;
       chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
     });
 
-    // --- Process Collections ---
+    /* ---------------------------------------------------------------------- */
+    /* PROCESS COLLECTIONS                                                    */
+    /* ---------------------------------------------------------------------- */
+
     let grandTotalCollected = 0;
     collections.forEach((col: any) => {
       if (!col.collection_date) return;
@@ -276,9 +346,10 @@ export async function GET(request: Request) {
       if (divisionFilter && colDivision !== divisionFilter) return;
 
       const amount = Number(col.totalAmount) || 0;
+      const month = col.collection_date.substring(0, 7);
+
       grandTotalCollected += amount;
 
-      // Division Specific Collection
       if (!divisionStats.has(colDivision))
         divisionStats.set(colDivision, {
           sales: 0,
@@ -287,11 +358,15 @@ export async function GET(request: Request) {
           collections: 0,
         });
       divisionStats.get(colDivision)!.collections += amount;
+
+      const mStat = monthlyStats.get(month);
+      if (mStat) mStat.collections += amount;
     });
 
-    // --- Calculate KPIs ---
+    /* ---------------------------------------------------------------------- */
+    /* KPI CALCULATIONS                                                       */
+    /* ---------------------------------------------------------------------- */
 
-    // 1. Overall KPIs
     let grossMargin = 0;
     if (grandTotalSales > 0)
       grossMargin =
@@ -301,12 +376,10 @@ export async function GET(request: Request) {
     if (grandTotalSales > 0)
       collectionRate = (grandTotalCollected / grandTotalSales) * 100;
 
-    // 2. Per-Division KPIs
     const kpiByDivision: any = {};
     divisionStats.forEach((val, key) => {
       let divGM = 0;
       if (val.sales > 0) divGM = ((val.sales - val.cogs) / val.sales) * 100;
-
       let divCR = 0;
       if (val.sales > 0) divCR = (val.collections / val.sales) * 100;
 
@@ -318,7 +391,10 @@ export async function GET(request: Request) {
       };
     });
 
-    // --- Formatting ---
+    /* ---------------------------------------------------------------------- */
+    /* FORMAT RESPONSE                                                        */
+    /* ---------------------------------------------------------------------- */
+
     const heatmapFinal: any = {};
     for (const [divName, sMap] of heatmapMap.entries()) {
       heatmapFinal[divName] = Array.from(sMap.values())
@@ -338,15 +414,25 @@ export async function GET(request: Request) {
       })).sort((a, b) => b.netSales - a.netSales);
     }
 
+    // UPDATED: Show all divisions in the bar chart, even if 0, to confirm they are tracked.
     const divisionSalesFormatted = Array.from(
-      divisionStats,
-      ([division, stats]) => ({
+      divisionTotals,
+      ([division, netSales]) => ({
         division,
-        netSales: toFixed(stats.sales),
+        netSales: toFixed(netSales),
       })
     )
-      .filter((d) => d.netSales !== 0 || d.division === "Frozen Goods")
+      .filter((d) => d.division !== "Unassigned" || d.netSales > 0) // Hide Unassigned if empty
       .sort((a, b) => b.netSales - a.netSales);
+
+    // Formatted Trend Data
+    const salesTrendFormatted = sortedMonths.map((month) => {
+      const s = monthlyStats.get(month) || { sales: 0 };
+      return {
+        date: month,
+        netSales: toFixed(s.sales),
+      };
+    });
 
     return NextResponse.json({
       kpi: {
@@ -355,14 +441,11 @@ export async function GET(request: Request) {
         grossMargin: toFixed(grossMargin),
         collectionRate: toFixed(collectionRate),
       },
-      kpiByDivision, // <--- NEW: Providing detailed KPIs per division
+      kpiByDivision,
       divisionSales: divisionSalesFormatted,
       supplierSalesByDivision: chartFinal,
       heatmapDataByDivision: heatmapFinal,
-      salesTrend: sortedMonths.map((month) => ({
-        date: month,
-        netSales: toFixed(monthlyTotals.get(month) || 0),
-      })),
+      salesTrend: salesTrendFormatted,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
