@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  CartesianGrid, // Added to match dashboard style
 } from "recharts";
 import { formatCurrency } from "@/components/dashboard/KPICard";
 
@@ -22,24 +23,18 @@ interface DivisionSalesChartProps {
   activeDivision?: string | null;
 }
 
-const DIVISION_COLORS = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981"];
-
-const CustomBarLabel = (props: {
-  x?: number;
-  y?: number;
-  width?: number;
-  value?: number;
-}) => {
-  const { x = 0, y = 0, width = 0, value = 0 } = props;
+const CustomBarLabel = (props: any) => {
+  const { x = 0, y = 0, width = 0, value = 0 } = props || {};
+  const numeric = Number(value) || 0;
   return (
     <text
       x={x + width / 2}
       y={y - 8}
       textAnchor="middle"
-      className="fill-gray-900 dark:fill-white font-bold"
+      className="fill-gray-900 font-bold"
       style={{ fontSize: "13px" }}
     >
-      ₱{(value / 1000000).toFixed(1)}M
+      ₱{(numeric / 1000000).toFixed(1)}M
     </text>
   );
 };
@@ -68,36 +63,41 @@ export const DivisionSalesChart = ({
           }
         }}
       >
+        {/* Added Grid to match Salesman Dashboard style */}
+        <CartesianGrid
+          strokeDasharray="3 3"
+          vertical={false}
+          stroke="#f0f0f0"
+        />
+
         <XAxis
           dataKey="division"
-          className="fill-gray-900 dark:fill-white"
-          style={{ fontSize: "13px", fontWeight: 600 }}
-          tick={{ fill: "currentColor" }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 13, fontWeight: 600, fill: "#666" }}
           height={60}
+          dy={10}
         />
         <YAxis
-          className="fill-gray-900 dark:fill-white"
-          style={{ fontSize: "12px" }}
-          tick={{ fill: "currentColor" }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 12, fill: "#888" }}
           tickFormatter={(value) => `₱${(value / 1000000).toFixed(0)}M`}
         />
         <Tooltip
+          cursor={{ fill: "transparent" }}
           contentStyle={{
-            backgroundColor: "rgba(0, 0, 0, 0.95)",
-            border: "none",
             borderRadius: "8px",
+            border: "none",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            backgroundColor: "#fff", // White background
             padding: "12px",
           }}
-          // FIX: Explicitly set the label (Division Name) color to white
-          labelStyle={{
-            color: "#fff",
-            fontWeight: "bold",
-            marginBottom: "4px",
-          }}
-          // FIX: Explicitly set the item (Net Sales) text color to white
-          itemStyle={{ color: "#fff", fontSize: "14px" }}
-          formatter={(value) => [formatCurrency(Number(value)), "Net Sales"]}
-          cursor={{ fill: "rgba(0, 0, 0, 0.05)", cursor: "pointer" }}
+          itemStyle={{ color: "#000", fontSize: "14px", fontWeight: "bold" }}
+          formatter={(value: any) => [
+            formatCurrency(Number(value)),
+            "Net Sales",
+          ]}
         />
         <Bar
           dataKey="netSales"
@@ -111,10 +111,10 @@ export const DivisionSalesChart = ({
             return (
               <Cell
                 key={`cell-${index}`}
-                fill={DIVISION_COLORS[index % DIVISION_COLORS.length]}
-                fillOpacity={activeDivision ? (isActive ? 1 : 0.4) : 1}
-                stroke={isActive ? "#000" : "none"}
-                strokeWidth={2}
+                // CHANGED: Use Black (#000000) instead of colored array
+                fill="#000000"
+                // Logic: High opacity if active or no selection, low opacity if inactive
+                fillOpacity={activeDivision ? (isActive ? 1 : 0.3) : 1}
                 className="cursor-pointer transition-all duration-300"
               />
             );

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   BarChart,
   Bar,
@@ -18,48 +19,77 @@ interface SupplierDatum {
 
 interface SupplierSalesChartProps {
   data: SupplierDatum[];
-  barColor?: string; // Added prop for dynamic color
 }
 
-export function SupplierSalesChart({
-  data,
-  barColor = "#3b82f6", // Default to Blue if no color is provided
-}: SupplierSalesChartProps) {
+export function SupplierSalesChart({ data }: SupplierSalesChartProps) {
+  // State to track which bar is clicked
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
   return (
     <div className="h-[400px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
-          // Increased bottom margin to make room for rotated labels
           margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
+          // 1. CLICK HANDLER: Manages selection state
+          onClick={(state) => {
+            if (state && state.activeTooltipIndex !== undefined) {
+              // Toggle: if clicking the same bar, reset; otherwise set active
+              setActiveIndex(
+                state.activeTooltipIndex === activeIndex
+                  ? null
+                  : state.activeTooltipIndex
+              );
+            } else {
+              // Clicking chart background resets selection
+              setActiveIndex(null);
+            }
+          }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
             vertical={false}
             stroke="#f0f0f0"
           />
+
           <XAxis
             dataKey="name"
-            interval={0} // <--- CRITICAL: Forces ALL labels to show
-            fontSize={11} // Slightly smaller font
+            interval={0}
+            fontSize={11}
             tickLine={false}
             axisLine={{ stroke: "#e5e7eb" }}
-            angle={-45} // <--- Rotates text so long names fit
-            textAnchor="end" // Aligns rotated text to the tick mark
-            height={80} // Allocates height for the axis itself
+            tick={{ fill: "#6b7280" }}
+            angle={-45}
+            textAnchor="end"
+            height={80}
           />
+
           <YAxis
             fontSize={12}
             tickLine={false}
             axisLine={false}
+            tick={{ fill: "#6b7280" }}
             tickFormatter={(value) => `₱${(Number(value) / 1000).toFixed(0)}K`}
           />
+
           <Tooltip
-            cursor={{ fill: "rgba(0,0,0, 0.05)" }}
+            cursor={{ fill: "transparent" }}
             contentStyle={{
+              backgroundColor: "#ffffff",
               borderRadius: "8px",
               border: "none",
-              boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+              padding: "12px",
+            }}
+            itemStyle={{
+              color: "#000000",
+              fontWeight: "bold",
+              fontSize: "14px",
+            }}
+            labelStyle={{
+              color: "#6b7280",
+              marginBottom: "4px",
+              fontSize: "12px",
             }}
             formatter={(value: number | string) => [
               `₱${Number(value).toLocaleString()}`,
@@ -67,22 +97,21 @@ export function SupplierSalesChart({
             ]}
           />
 
-          <Bar
-            dataKey="netSales"
-            fill={barColor} // Uses the dynamic color passed from parent
-            radius={[4, 4, 0, 0]}
-            barSize={70} // <--- UPDATED: Increased from 50 to 70 for wider bars
-          >
-            {/* Optional: subtle opacity change for alternating bars, 
-               but keeping the main color consistent with the Division theme 
-            */}
-            {data.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={barColor}
-                fillOpacity={index % 2 === 0 ? 1 : 0.85}
-              />
-            ))}
+          {/* 2. RENDER BARS: Black color with dynamic opacity */}
+          <Bar dataKey="netSales" radius={[4, 4, 0, 0]} barSize={70}>
+            {data.map((entry, index) => {
+              // Logic: Active if NO selection exists OR if this specific bar is selected
+              const isActive = activeIndex === null || activeIndex === index;
+
+              return (
+                <Cell
+                  key={`cell-${index}`}
+                  fill="#000000" // Force Black Color
+                  fillOpacity={isActive ? 1 : 0.3} // 100% opacity for active, 30% for others
+                  className="cursor-pointer transition-all duration-300 hover:opacity-80"
+                />
+              );
+            })}
           </Bar>
         </BarChart>
       </ResponsiveContainer>

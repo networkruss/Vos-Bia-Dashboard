@@ -1,9 +1,18 @@
 // src/components/modules/bi/SalesTrendChart.tsx
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { formatCurrency } from "@/components/dashboard/KPICard"; // Utility function location
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
+} from "recharts";
+import { formatCurrency } from "@/components/dashboard/KPICard";
 
 // Assuming SalesTrendData is imported from types
-type SalesTrendData = { date: string; netSales: number; }; 
+type SalesTrendData = { date: string; netSales: number };
 
 interface SalesTrendChartProps {
   data: SalesTrendData[];
@@ -20,34 +29,59 @@ export const SalesTrendChart = ({ data }: SalesTrendChartProps) => {
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <AreaChart data={data}>
+      <AreaChart
+        data={data}
+        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+      >
         <defs>
-          <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#6b7280" stopOpacity={0.3} />
-            <stop offset="50%" stopColor="#6b7280" stopOpacity={0.15} />
-            <stop offset="95%" stopColor="#6b7280" stopOpacity={0.05} />
+          <linearGradient id="colorNetSales" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#000000" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="#000000" stopOpacity={0.05} />
           </linearGradient>
         </defs>
-        <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: "11px" }} />
+
+        <CartesianGrid
+          strokeDasharray="3 3"
+          vertical={false}
+          stroke="#f0f0f0"
+        />
+
+        <XAxis
+          dataKey="date"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 12, fill: "#888" }}
+          dy={10}
+        />
+
         <YAxis
-          stroke="#9ca3af"
-          style={{ fontSize: "11px" }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 12, fill: "#888" }}
           tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}K`}
         />
+
         <Tooltip
           contentStyle={{
-            backgroundColor: "rgba(0, 0, 0, 0.9)", border: "none", borderRadius: "8px", color: "#fff",
+            borderRadius: "8px",
+            border: "none",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            backgroundColor: "#fff",
           }}
+          itemStyle={{ color: "#000" }}
           formatter={(value) => [formatCurrency(Number(value)), "Net Sales"]}
         />
+
+        <Legend verticalAlign="bottom" height={36} iconType="circle" />
+
         <Area
           type="monotone"
           dataKey="netSales"
-          stroke="#6b7280"
+          name="Net Sales"
+          stroke="#333333"
           strokeWidth={2}
-          fill="url(#colorSales)"
-          dot={{ fill: "#374151", r: 4, strokeWidth: 2, stroke: "#fff" }}
-          activeDot={{ r: 6, fill: "#374151" }}
+          fill="url(#colorNetSales)"
+          activeDot={{ r: 6, fill: "#000000" }}
         />
       </AreaChart>
     </ResponsiveContainer>

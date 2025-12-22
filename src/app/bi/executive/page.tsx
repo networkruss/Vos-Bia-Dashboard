@@ -13,33 +13,21 @@ import { DivisionSalesChart } from "@/components/modules/bi/DivisionSalesChart";
 import { SupplierSalesChart } from "@/components/dashboard/SupplierSalesChart";
 import { SupplierHeatmap } from "@/components/dashboard/SupplierHeatmap";
 
-// 1. DEFINE COLORS: Ito ang magbabalik ng kulay sa bawat division
-const DIVISION_COLORS: Record<string, string> = {
-  "Dry Goods": "#3b82f6", // Blue
-  Industrial: "#8b5cf6", // Violet/Purple
-  "Mama Pina's": "#f59e0b", // Amber/Orange
-  "Frozen Goods": "#06b6d4", // Cyan
-  Unassigned: "#ec4899", // Pink
-};
-
 export default function ExecutiveDashboard() {
   const { loading, error, dashboardData, handleFilterChange } =
     useExecutiveData();
   const [selectedDivision, setSelectedDivision] = useState<string | null>(null);
 
-  // Reference for smooth scrolling
   const drilldownRef = useRef<HTMLDivElement>(null);
 
   const onFilterUpdate = (filters: DashboardFilters) => {
     handleFilterChange(filters);
-    setSelectedDivision(null); // Reset drilldown on filter change
+    setSelectedDivision(null);
   };
 
   const handleBarClick = (divisionName: string) => {
     setSelectedDivision((prev) => {
       const isNewSelection = prev !== divisionName;
-
-      // If we are selecting a new division, scroll to details
       if (isNewSelection) {
         setTimeout(() => {
           drilldownRef.current?.scrollIntoView({
@@ -53,20 +41,23 @@ export default function ExecutiveDashboard() {
     });
   };
 
-  // 2. GET ACTIVE COLOR: Kunin ang kulay base sa pinindot na division
-  const activeColor = selectedDivision
-    ? DIVISION_COLORS[selectedDivision] || "#3b82f6" // Default blue if unknown
-    : "#3b82f6";
-
   if (loading)
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
       </div>
     );
 
   if (error || !dashboardData)
     return <div className="p-8 text-center text-red-500">Error: {error}</div>;
+
+  // --- KPI LOGIC ---
+  // If a division is selected, try to find its specific KPIs.
+  // Fallback to Overall KPI if no division is selected or data is missing.
+  const activeKPI =
+    selectedDivision && dashboardData.kpiByDivision?.[selectedDivision]
+      ? dashboardData.kpiByDivision[selectedDivision]
+      : dashboardData.kpi;
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
@@ -74,27 +65,31 @@ export default function ExecutiveDashboard() {
 
       <FilterBar onFilterChange={onFilterUpdate} branches={[]} />
 
-      {/* KPI Cards */}
+      {/* KPI Cards (Now Dynamic!) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KPICard
-          title="Total Net Sales"
-          value={formatCurrency(dashboardData.kpi?.totalNetSales ?? 0)}
+          title={
+            selectedDivision ? `${selectedDivision} Sales` : "Total Net Sales"
+          }
+          value={formatCurrency(activeKPI?.totalNetSales ?? 0)}
           icon={TrendingUp}
         />
         <KPICard
-          title="Total Returns"
-          value={formatCurrency(dashboardData.kpi?.totalReturns ?? 0)}
+          title={
+            selectedDivision ? `${selectedDivision} Returns` : "Total Returns"
+          }
+          value={formatCurrency(activeKPI?.totalReturns ?? 0)}
           icon={TrendingDown}
           className="text-red-600"
         />
         <KPICard
           title="Gross Margin"
-          value={`${dashboardData.kpi?.grossMargin?.toFixed(1) ?? 0}%`}
+          value={`${activeKPI?.grossMargin?.toFixed(1) ?? 0}%`}
           icon={Percent}
         />
         <KPICard
           title="Collection Rate"
-          value={`${dashboardData.kpi?.collectionRate ?? 0}%`}
+          value={`${activeKPI?.collectionRate ?? 0}%`}
           icon={Percent}
         />
       </div>
@@ -127,9 +122,9 @@ export default function ExecutiveDashboard() {
               className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500"
             >
               {/* SUPPLIER BREAKDOWN CHART */}
-              <Card className="border-blue-100 shadow-md">
+              <Card className="border-gray-200 shadow-md">
                 <CardHeader className="bg-gray-50/50 border-b">
-                  <CardTitle style={{ color: activeColor }}>
+                  <CardTitle style={{ color: "#000000" }}>
                     Supplier Breakdown: {selectedDivision}
                   </CardTitle>
                 </CardHeader>
@@ -140,7 +135,6 @@ export default function ExecutiveDashboard() {
                         selectedDivision
                       ] || []
                     }
-                    barColor={activeColor} // Pass the dynamic color here
                   />
                 </CardContent>
               </Card>
@@ -158,7 +152,7 @@ export default function ExecutiveDashboard() {
                       dashboardData.heatmapDataByDivision?.[selectedDivision] ||
                       []
                     }
-                    divisionName={selectedDivision} // Pass name for theme coloring
+                    divisionName={selectedDivision}
                   />
                 </CardContent>
               </Card>

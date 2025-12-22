@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
 
-/* -------------------------------------------------------------------------- */
-/* FETCH HELPERS                                                              */
-/* -------------------------------------------------------------------------- */
-
 async function fetchAll<T = any>(url: string): Promise<T[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000);
+
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data as T[]) || [];
@@ -16,10 +19,6 @@ async function fetchAll<T = any>(url: string): Promise<T[]> {
     return [];
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* HELPERS                                                                    */
-/* -------------------------------------------------------------------------- */
 
 function normalizeDate(d: string | null) {
   if (!d) return null;
@@ -32,7 +31,6 @@ function normalizeDate(d: string | null) {
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
 
-// Helper to check buffer/bit fields like isCancelled: { type: 'Buffer', data: [1] }
 function isTruthy(field: any) {
   if (field === true || field === 1 || field === "1") return true;
   if (field && typeof field === "object" && field.data && field.data[0] === 1)
@@ -40,20 +38,13 @@ function isTruthy(field: any) {
   return false;
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN ROUTE                                                                 */
-/* -------------------------------------------------------------------------- */
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const fromDate = normalizeDate(searchParams.get("fromDate"));
     const toDate = normalizeDate(searchParams.get("toDate"));
-    const divisionFilter = searchParams.get("division");
-
-    /* ---------------------------------------------------------------------- */
-    /* LOAD DATA                                                              */
-    /* ---------------------------------------------------------------------- */
+    const rawDiv = searchParams.get("division");
+    const divisionFilter = rawDiv === "all" ? null : rawDiv;
 
     const [
       invoices,
@@ -65,7 +56,7 @@ export async function GET(request: Request) {
       divisions,
       returns,
       returnDetails,
-      collections, // <--- NEW: Loaded Collections
+      collections,
     ] = await Promise.all([
       fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
@@ -76,13 +67,10 @@ export async function GET(request: Request) {
       fetchAll(`${DIRECTUS_URL}/items/division?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_return?limit=-1`),
       fetchAll(`${DIRECTUS_URL}/items/sales_return_details?limit=-1`),
-      fetchAll(`${DIRECTUS_URL}/items/collection?limit=-1`), // <--- Fetching Collections
+      fetchAll(`${DIRECTUS_URL}/items/collection?limit=-1`),
     ]);
 
-    /* ---------------------------------------------------------------------- */
-    /* BUILD MAPS                                                             */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Build Maps ---
     const monthSet = new Set<string>();
     const invoiceMap = new Map<string, any>();
 
@@ -139,58 +127,56 @@ export async function GET(request: Request) {
       ])
     );
 
-    /* ---------------------------------------------------------------------- */
-    /* RETURNS MAPPING                                                        */
-    /* ---------------------------------------------------------------------- */
-
     const returnItemMap = new Map<string, { total: number; disc: number }>();
-
     returnDetails.forEach((rd: any) => {
       const parent = returns.find((r: any) => r.return_number === rd.return_no);
       if (!parent) return;
-
       const masterProduct =
         productParentMap.get(rd.product_id) || rd.product_id;
-
       const key = `${parent.order_id}_${parent.invoice_no}_${masterProduct}`;
       const cur = returnItemMap.get(key) || { total: 0, disc: 0 };
-
       returnItemMap.set(key, {
         total: cur.total + (+rd.total_amount || 0),
         disc: cur.disc + (+rd.discount_amount || 0),
       });
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* SALES AGGREGATION                                                      */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Aggregation Containers ---
     const heatmapMap = new Map<string, Map<string, any>>();
     const supplierChartMap = new Map<string, Map<string, number>>();
-    const divisionTotals = new Map<string, number>();
     const monthlyTotals = new Map<string, number>();
 
-    sortedMonths.forEach((m) => monthlyTotals.set(m, 0));
+    // NEW: Detailed stats per division to calculate KPIs individually
+    const divisionStats = new Map<
+      string,
+      { sales: number; returns: number; cogs: number; collections: number }
+    >();
 
-    // Initialize Divisions
+    // Initialize containers
+    sortedMonths.forEach((m) => monthlyTotals.set(m, 0));
     divisions.forEach((d: any) => {
       const name = String(d.division_name || d.division);
       if (name) {
-        divisionTotals.set(name, 0);
+        divisionStats.set(name, {
+          sales: 0,
+          returns: 0,
+          cogs: 0,
+          collections: 0,
+        });
       }
     });
 
-    let grandTotal = 0;
+    let grandTotalSales = 0;
     let grandTotalReturns = 0;
     let grandTotalCOGS = 0;
 
+    // --- Process Sales ---
     details.forEach((det: any) => {
       const invId =
         typeof det.invoice_no === "object"
           ? det.invoice_no?.id
           : det.invoice_no;
       const inv = invoiceMap.get(invId);
-
       if (!inv) return;
 
       const masterProduct =
@@ -200,60 +186,62 @@ export async function GET(request: Request) {
       const supplier =
         typeof supplierRaw === "string" ? supplierRaw : "No Supplier";
 
-      // --- DIVISION LOGIC ---
       const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
       let division = divisionId ? divisionNameMap.get(divisionId) : undefined;
 
       // Fallback Logic
       if (!division || division === "Unassigned") {
-        if (supplier === "VOS" || supplier === "VOS BIA") {
+        if (supplier === "VOS" || supplier === "VOS BIA")
           division = "Dry Goods";
-        } else if (supplier === "Mama Pina's") {
-          division = "Mama Pina's";
-        } else if (
+        else if (supplier === "Mama Pina's") division = "Mama Pina's";
+        else if (
           supplier === "Industrial Corp" ||
           (typeof supplier === "string" && supplier.includes("Industrial"))
-        ) {
+        )
           division = "Industrial";
-        } else {
-          division = "Frozen Goods";
-        }
+        else division = "Frozen Goods";
       }
 
-      if (
-        divisionFilter &&
-        divisionFilter !== "all" &&
-        division !== divisionFilter
-      )
-        return;
+      // Filter check
+      if (divisionFilter && division !== divisionFilter) return;
 
-      // Net Sales Calc
+      const month = inv.invoice_date.substring(0, 7);
+
       const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
       const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
       const returnAmount = ret.total - ret.disc;
-
-      grandTotalReturns += returnAmount;
-
       const net =
         (+det.total_amount || 0) - (+det.discount_amount || 0) - returnAmount;
 
-      // COGS Calc
       const unitCost = Number(productCostMap.get(det.product_id) || 0);
       const unitPrice = +det.unit_price || 0;
       const returnedQtyApprox = unitPrice > 0 ? returnAmount / unitPrice : 0;
       const netQty = (+det.quantity || 0) - returnedQtyApprox;
       const cogs = unitCost * netQty;
+
+      // Global Totals
+      grandTotalSales += net;
+      grandTotalReturns += returnAmount;
       grandTotalCOGS += cogs;
 
-      grandTotal += net;
-      const month = inv.invoice_date.substring(0, 7);
+      // Division Specific Totals
+      if (!divisionStats.has(division))
+        divisionStats.set(division, {
+          sales: 0,
+          returns: 0,
+          cogs: 0,
+          collections: 0,
+        });
+      const stats = divisionStats.get(division)!;
+      stats.sales += net;
+      stats.returns += returnAmount;
+      stats.cogs += cogs;
 
       monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + net);
-      divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
 
       if (net === 0) return;
 
-      // Heatmap
+      // Heatmap & Charts
       if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
       const divMap = heatmapMap.get(division)!;
       if (!divMap.has(supplier)) {
@@ -262,78 +250,81 @@ export async function GET(request: Request) {
         divMap.set(supplier, row);
       }
       const hRow = divMap.get(supplier)!;
-      hRow[month] += net;
+      if (hRow[month] !== undefined) hRow[month] += net;
       hRow.total += net;
 
-      // Chart
       if (!supplierChartMap.has(division))
-        supplierChartMap.set(division, new Map<string, number>());
+        supplierChartMap.set(division, new Map());
       const chartMap = supplierChartMap.get(division)!;
       chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* COLLECTION AGGREGATION (NEW)                                           */
-    /* ---------------------------------------------------------------------- */
-
-    let totalCollected = 0;
-
+    // --- Process Collections ---
+    let grandTotalCollected = 0;
     collections.forEach((col: any) => {
-      // 1. Date Filter
       if (!col.collection_date) return;
       const d = col.collection_date.substring(0, 10);
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
-
-      // 2. Ignore Cancelled Transactions
       if (isTruthy(col.isCancelled)) return;
 
-      // 3. Division Filter
-      // Note: Collections rely on Salesman mapping. Fallbacks based on Supplier
-      // (like for sales) are not possible here as collections don't have supplier info.
       const divId = salesmanDivisionMap.get(String(col.salesman_id));
       const colDivision = divId
         ? divisionNameMap.get(divId) || "Unassigned"
         : "Unassigned";
 
-      // If Global Filter is active, exclude collections not from that division
-      if (
-        divisionFilter &&
-        divisionFilter !== "all" &&
-        colDivision !== divisionFilter
-      ) {
-        return;
-      }
+      if (divisionFilter && colDivision !== divisionFilter) return;
 
-      totalCollected += Number(col.totalAmount) || 0;
+      const amount = Number(col.totalAmount) || 0;
+      grandTotalCollected += amount;
+
+      // Division Specific Collection
+      if (!divisionStats.has(colDivision))
+        divisionStats.set(colDivision, {
+          sales: 0,
+          returns: 0,
+          cogs: 0,
+          collections: 0,
+        });
+      divisionStats.get(colDivision)!.collections += amount;
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* FINAL KPI CALCULATIONS                                                 */
-    /* ---------------------------------------------------------------------- */
+    // --- Calculate KPIs ---
 
-    // Gross Margin
+    // 1. Overall KPIs
     let grossMargin = 0;
-    if (grandTotal > 0) {
-      grossMargin = ((grandTotal - grandTotalCOGS) / grandTotal) * 100;
-    }
+    if (grandTotalSales > 0)
+      grossMargin =
+        ((grandTotalSales - grandTotalCOGS) / grandTotalSales) * 100;
 
-    // Collection Rate
     let collectionRate = 0;
-    if (grandTotal > 0) {
-      collectionRate = (totalCollected / grandTotal) * 100;
-    }
+    if (grandTotalSales > 0)
+      collectionRate = (grandTotalCollected / grandTotalSales) * 100;
 
-    /* ---------------------------------------------------------------------- */
-    /* FORMATTING RESPONSE                                                    */
-    /* ---------------------------------------------------------------------- */
+    // 2. Per-Division KPIs
+    const kpiByDivision: any = {};
+    divisionStats.forEach((val, key) => {
+      let divGM = 0;
+      if (val.sales > 0) divGM = ((val.sales - val.cogs) / val.sales) * 100;
 
+      let divCR = 0;
+      if (val.sales > 0) divCR = (val.collections / val.sales) * 100;
+
+      kpiByDivision[key] = {
+        totalNetSales: toFixed(val.sales),
+        totalReturns: toFixed(val.returns),
+        grossMargin: toFixed(divGM),
+        collectionRate: toFixed(divCR),
+      };
+    });
+
+    // --- Formatting ---
     const heatmapFinal: any = {};
     for (const [divName, sMap] of heatmapMap.entries()) {
       heatmapFinal[divName] = Array.from(sMap.values())
         .map((row) => {
           row.total = toFixed(row.total);
-          sortedMonths.forEach((m) => (row[m] = toFixed(row[m])));
+          sortedMonths.forEach((m) => (row[m] = toFixed(row[m] || 0)));
           return row;
         })
         .sort((a, b) => b.total - a.total);
@@ -348,10 +339,10 @@ export async function GET(request: Request) {
     }
 
     const divisionSalesFormatted = Array.from(
-      divisionTotals,
-      ([division, netSales]) => ({
+      divisionStats,
+      ([division, stats]) => ({
         division,
-        netSales: toFixed(netSales),
+        netSales: toFixed(stats.sales),
       })
     )
       .filter((d) => d.netSales !== 0 || d.division === "Frozen Goods")
@@ -359,11 +350,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       kpi: {
-        totalNetSales: toFixed(grandTotal),
+        totalNetSales: toFixed(grandTotalSales),
         totalReturns: toFixed(grandTotalReturns),
         grossMargin: toFixed(grossMargin),
-        collectionRate: toFixed(collectionRate), // Calculated!
+        collectionRate: toFixed(collectionRate),
       },
+      kpiByDivision, // <--- NEW: Providing detailed KPIs per division
       divisionSales: divisionSalesFormatted,
       supplierSalesByDivision: chartFinal,
       heatmapDataByDivision: heatmapFinal,
