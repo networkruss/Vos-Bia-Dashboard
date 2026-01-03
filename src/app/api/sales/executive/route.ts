@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
-
-/* -------------------------------------------------------------------------- */
-/* FETCH HELPERS                                                              */
-/* -------------------------------------------------------------------------- */
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8056";
 
 async function fetchAll<T = any>(url: string): Promise<T[]> {
   const controller = new AbortController();
@@ -24,24 +20,17 @@ async function fetchAll<T = any>(url: string): Promise<T[]> {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* HELPERS                                                                    */
-/* -------------------------------------------------------------------------- */
-
 function normalizeDate(d: string | null) {
   if (!d) return null;
-
-  // Handle DD/MM/YYYY format (Common in PH)
+  // Handle DD/MM/YYYY format
   if (d.includes("/")) {
     const parts = d.split("/");
     if (parts.length === 3) {
-      // Assuming DD/MM/YYYY based on your usage (01/12/2025)
-      // We convert to ISO YYYY-MM-DD for string comparison
       const [day, month, year] = parts;
       return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
     }
   }
-  return d; // Assume already YYYY-MM-DD
+  return d;
 }
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
@@ -53,10 +42,6 @@ function isTruthy(field: any) {
   return false;
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN ROUTE                                                                 */
-/* -------------------------------------------------------------------------- */
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -64,10 +49,6 @@ export async function GET(request: Request) {
     const toDate = normalizeDate(searchParams.get("toDate"));
     const rawDiv = searchParams.get("division");
     const divisionFilter = rawDiv === "all" ? null : rawDiv;
-
-    /* ---------------------------------------------------------------------- */
-    /* LOAD DATA                                                              */
-    /* ---------------------------------------------------------------------- */
 
     const [
       invoices,
@@ -93,27 +74,37 @@ export async function GET(request: Request) {
       fetchAll(`${DIRECTUS_URL}/items/collection?limit=-1`),
     ]);
 
-    /* ---------------------------------------------------------------------- */
-    /* BUILD MAPS                                                             */
-    /* ---------------------------------------------------------------------- */
-
-    const monthSet = new Set<string>();
+    // --- 1. BUILD MAPS & DATE FILTERING ---
     const invoiceMap = new Map<string, any>();
+    const filteredInvoiceIds = new Set<string>(); // IDs inside the selected date range
+
+    // Sets to track months for different views
+    const filteredMonthSet = new Set<string>(); // For Heatmap columns (matches date range)
+    const trendMonthSet = new Set<string>(); // For Trend Chart (matches all history)
 
     invoices.forEach((i: any) => {
       if (!i.invoice_date) return;
       const d = i.invoice_date.substring(0, 10);
-
-      // Strict Date Filtering
-      if (fromDate && d < fromDate) return;
-      if (toDate && d > toDate) return;
+      const month = i.invoice_date.substring(0, 7);
 
       invoiceMap.set(i.invoice_id, i);
-      monthSet.add(i.invoice_date.substring(0, 7));
+
+      // Always add to trend set (Historical)
+      trendMonthSet.add(month);
+
+      // Check strict date filter for KPIs/Heatmaps
+      const isWithinDate =
+        (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
+      if (isWithinDate) {
+        filteredInvoiceIds.add(i.invoice_id);
+        filteredMonthSet.add(month);
+      }
     });
 
-    const sortedMonths = Array.from(monthSet).sort();
+    const sortedFilteredMonths = Array.from(filteredMonthSet).sort();
+    const sortedTrendMonths = Array.from(trendMonthSet).sort();
 
+    // Mappings
     const productParentMap = new Map<string | number, string | number>(
       products.map((p: any) => {
         const parentId =
@@ -169,63 +160,56 @@ export async function GET(request: Request) {
       });
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* AGGREGATION CONTAINERS                                                 */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Aggregation Containers ---
     const heatmapMap = new Map<string, Map<string, any>>();
     const supplierChartMap = new Map<string, Map<string, number>>();
     const divisionTotals = new Map<string, number>();
 
-    const monthlyStats = new Map<
-      string,
-      { sales: number; returns: number; cogs: number; collections: number }
-    >();
-    sortedMonths.forEach((m) => {
-      monthlyStats.set(m, { sales: 0, returns: 0, cogs: 0, collections: 0 });
-    });
+    // Trend Map (Unfiltered Dates)
+    const trendMap = new Map<string, number>();
+    sortedTrendMonths.forEach((m) => trendMap.set(m, 0));
 
+    // KPI Division Stats (Filtered Dates)
     const divisionStats = new Map<
       string,
       { sales: number; returns: number; cogs: number; collections: number }
     >();
-    divisions.forEach((d: any) => {
-      const name = String(d.division_name || d.division);
-      if (name) {
-        divisionTotals.set(name, 0);
-        divisionStats.set(name, {
-          sales: 0,
-          returns: 0,
-          cogs: 0,
-          collections: 0,
-        });
-      }
-    });
-    // Ensure standard divisions exist in stats even if DB list is partial
-    [
+
+    // Initialize Divisions
+    const standardDivisions = [
       "Dry Goods",
       "Industrial",
       "Mama Pina's",
       "Frozen Goods",
       "Unassigned",
-    ].forEach((name) => {
-      if (!divisionStats.has(name))
+    ];
+    standardDivisions.forEach((name) => {
+      divisionStats.set(name, {
+        sales: 0,
+        returns: 0,
+        cogs: 0,
+        collections: 0,
+      });
+      divisionTotals.set(name, 0);
+    });
+    divisions.forEach((d: any) => {
+      const name = String(d.division_name || d.division);
+      if (name && !divisionStats.has(name)) {
         divisionStats.set(name, {
           sales: 0,
           returns: 0,
           cogs: 0,
           collections: 0,
         });
+        divisionTotals.set(name, 0);
+      }
     });
 
     let grandTotalSales = 0;
     let grandTotalReturns = 0;
     let grandTotalCOGS = 0;
 
-    /* ---------------------------------------------------------------------- */
-    /* PROCESS SALES DETAILS                                                  */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Process Sales ---
     details.forEach((det: any) => {
       const invId =
         typeof det.invoice_no === "object"
@@ -244,7 +228,7 @@ export async function GET(request: Request) {
       const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
       let division = divisionId ? divisionNameMap.get(divisionId) : undefined;
 
-      // --- IMPROVED FALLBACK LOGIC ---
+      // Division Fallback Logic
       if (!division || division === "Unassigned") {
         if (supplier === "VOS" || supplier === "VOS BIA")
           division = "Dry Goods";
@@ -254,82 +238,77 @@ export async function GET(request: Request) {
           (typeof supplier === "string" && supplier.includes("Industrial"))
         )
           division = "Industrial";
-        // CRITICAL FIX: Only default to "Frozen Goods" if we have a valid supplier that is NOT matched above.
-        // If supplier is "No Supplier", put it in "Unassigned" so it doesn't inflate Frozen Goods.
         else if (supplier && supplier !== "No Supplier")
           division = "Frozen Goods";
         else division = "Unassigned";
       }
 
+      // 1. GLOBAL DIVISION FILTER: Applies to everything (Trend AND KPIs)
       if (divisionFilter && division !== divisionFilter) return;
 
-      const month = inv.invoice_date.substring(0, 7);
+      // Calculations
       const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
       const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
       const returnAmount = ret.total - ret.disc;
       const net =
         (+det.total_amount || 0) - (+det.discount_amount || 0) - returnAmount;
-
       const unitCost = Number(productCostMap.get(det.product_id) || 0);
       const unitPrice = +det.unit_price || 0;
       const returnedQtyApprox = unitPrice > 0 ? returnAmount / unitPrice : 0;
       const netQty = (+det.quantity || 0) - returnedQtyApprox;
       const cogs = unitCost * netQty;
+      const month = inv.invoice_date.substring(0, 7);
 
-      // Accumulate
-      grandTotalSales += net;
-      grandTotalReturns += returnAmount;
-      grandTotalCOGS += cogs;
+      // --- A. TREND AGGREGATION (Unfiltered by Date) ---
+      // We add to the trend map regardless of the date selection
+      trendMap.set(month, (trendMap.get(month) || 0) + net);
 
-      // Division Stats
-      if (!divisionStats.has(division))
-        divisionStats.set(division, {
-          sales: 0,
-          returns: 0,
-          cogs: 0,
-          collections: 0,
-        });
-      const dStat = divisionStats.get(division)!;
-      dStat.sales += net;
-      dStat.returns += returnAmount;
-      dStat.cogs += cogs;
+      // --- B. KPI & TABLE AGGREGATION (Filtered by Date) ---
+      // Only proceed if this invoice passed the date filter
+      if (filteredInvoiceIds.has(inv.invoice_id)) {
+        // Accumulate Global Totals
+        grandTotalSales += net;
+        grandTotalReturns += returnAmount;
+        grandTotalCOGS += cogs;
 
-      // Division Totals for Bar Chart
-      divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
+        // Division Stats & Bar Chart
+        if (!divisionStats.has(division))
+          divisionStats.set(division, {
+            sales: 0,
+            returns: 0,
+            cogs: 0,
+            collections: 0,
+          });
+        const dStat = divisionStats.get(division)!;
+        dStat.sales += net;
+        dStat.returns += returnAmount;
+        dStat.cogs += cogs;
 
-      // Monthly Stats
-      const mStat = monthlyStats.get(month);
-      if (mStat) {
-        mStat.sales += net;
-        mStat.returns += returnAmount;
-        mStat.cogs += cogs;
+        divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
+
+        if (net !== 0) {
+          // Heatmap
+          if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
+          const divMap = heatmapMap.get(division)!;
+          if (!divMap.has(supplier)) {
+            const row: any = { supplier, total: 0 };
+            sortedFilteredMonths.forEach((m) => (row[m] = 0));
+            divMap.set(supplier, row);
+          }
+          const hRow = divMap.get(supplier)!;
+          if (hRow[month] !== undefined) hRow[month] += net;
+          hRow.total += net;
+
+          // Supplier Chart
+          if (!supplierChartMap.has(division))
+            supplierChartMap.set(division, new Map());
+          const chartMap = supplierChartMap.get(division)!;
+          chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
+        }
       }
-
-      if (net === 0) return;
-
-      // Heatmap
-      if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
-      const divMap = heatmapMap.get(division)!;
-      if (!divMap.has(supplier)) {
-        const row: any = { supplier, total: 0 };
-        sortedMonths.forEach((m) => (row[m] = 0));
-        divMap.set(supplier, row);
-      }
-      const hRow = divMap.get(supplier)!;
-      if (hRow[month] !== undefined) hRow[month] += net;
-      hRow.total += net;
-
-      // Chart
-      if (!supplierChartMap.has(division))
-        supplierChartMap.set(division, new Map());
-      const chartMap = supplierChartMap.get(division)!;
-      chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* PROCESS COLLECTIONS                                                    */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Process Collections (Filtered by Date for KPIs) ---
     let grandTotalCollected = 0;
     collections.forEach((col: any) => {
       if (!col.collection_date) return;
@@ -346,8 +325,6 @@ export async function GET(request: Request) {
       if (divisionFilter && colDivision !== divisionFilter) return;
 
       const amount = Number(col.totalAmount) || 0;
-      const month = col.collection_date.substring(0, 7);
-
       grandTotalCollected += amount;
 
       if (!divisionStats.has(colDivision))
@@ -358,15 +335,9 @@ export async function GET(request: Request) {
           collections: 0,
         });
       divisionStats.get(colDivision)!.collections += amount;
-
-      const mStat = monthlyStats.get(month);
-      if (mStat) mStat.collections += amount;
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* KPI CALCULATIONS                                                       */
-    /* ---------------------------------------------------------------------- */
-
+    // --- KPI Calculations ---
     let grossMargin = 0;
     if (grandTotalSales > 0)
       grossMargin =
@@ -391,16 +362,17 @@ export async function GET(request: Request) {
       };
     });
 
-    /* ---------------------------------------------------------------------- */
-    /* FORMAT RESPONSE                                                        */
-    /* ---------------------------------------------------------------------- */
-
+    // --- Format Response ---
     const heatmapFinal: any = {};
     for (const [divName, sMap] of heatmapMap.entries()) {
       heatmapFinal[divName] = Array.from(sMap.values())
         .map((row) => {
           row.total = toFixed(row.total);
-          sortedMonths.forEach((m) => (row[m] = toFixed(row[m] || 0)));
+          // Ensure null/undefined months are 0
+          sortedFilteredMonths.forEach((m) => {
+            if (row[m] === undefined) row[m] = 0;
+            row[m] = toFixed(row[m]);
+          });
           return row;
         })
         .sort((a, b) => b.total - a.total);
@@ -414,7 +386,6 @@ export async function GET(request: Request) {
       })).sort((a, b) => b.netSales - a.netSales);
     }
 
-    // UPDATED: Show all divisions in the bar chart, even if 0, to confirm they are tracked.
     const divisionSalesFormatted = Array.from(
       divisionTotals,
       ([division, netSales]) => ({
@@ -422,17 +393,15 @@ export async function GET(request: Request) {
         netSales: toFixed(netSales),
       })
     )
-      .filter((d) => d.division !== "Unassigned" || d.netSales > 0) // Hide Unassigned if empty
+      .filter((d) => d.division !== "Unassigned" || d.netSales > 0)
       .sort((a, b) => b.netSales - a.netSales);
 
-    // Formatted Trend Data
-    const salesTrendFormatted = sortedMonths.map((month) => {
-      const s = monthlyStats.get(month) || { sales: 0 };
-      return {
-        date: month,
-        netSales: toFixed(s.sales),
-      };
-    });
+    // Format Trend (Using Unfiltered Data)
+    // We map over sortedTrendMonths (All History) instead of sortedFilteredMonths
+    const salesTrendFormatted = sortedTrendMonths.map((month) => ({
+      date: month,
+      netSales: toFixed(trendMap.get(month) || 0),
+    }));
 
     return NextResponse.json({
       kpi: {

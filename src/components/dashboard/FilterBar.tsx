@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+} from "date-fns";
+import { Calendar as CalendarIcon, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -11,136 +17,212 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { RefreshCw, X } from "lucide-react";
-import { format } from "date-fns";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import type { DashboardFilters } from "@/types";
 
 interface FilterBarProps {
-  onFilterChange: (filters: {
-    fromDate: string;
-    toDate: string;
-    branch?: string;
-  }) => void;
-  branches?: string[];
-  showBranch?: boolean;
+  onFilterChange: (filters: DashboardFilters) => void;
+  branches?: any[]; // Kept for compatibility, though unused in this specific view
 }
 
-export function FilterBar({
-  onFilterChange,
-  branches = [],
-  showBranch = true,
-}: FilterBarProps) {
-  const [fromDate, setFromDate] = useState(
-    format(
-      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-      "yyyy-MM-dd"
-    )
+export function FilterBar({ onFilterChange }: FilterBarProps) {
+  // 1. STATE: Manage the dropdown preset value
+  const [datePreset, setDatePreset] = useState("This Month");
+
+  // 2. STATE: Manage the actual date range values
+  const [fromDate, setFromDate] = useState<Date | undefined>(
+    startOfMonth(new Date())
   );
-  const [toDate, setToDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [branch, setBranch] = useState<string>("ALL");
+  const [toDate, setToDate] = useState<Date | undefined>(
+    endOfMonth(new Date())
+  );
 
-  const activeFilters: { key: string; label: string; value: string }[] = [];
-  if (branch !== "ALL")
-    activeFilters.push({ key: "branch", label: "Branch", value: branch });
+  // 3. HANDLER: Update dates when a preset is selected
+  const handlePresetChange = (value: string) => {
+    setDatePreset(value);
+    const now = new Date();
 
-  const handleApplyFilters = () => {
-    onFilterChange({
-      fromDate,
-      toDate,
-      branch: branch === "ALL" ? undefined : branch,
-    });
-  };
+    let newFrom: Date | undefined;
+    let newTo: Date | undefined;
 
-  const handleClearFilters = () => {
-    const firstDay = format(
-      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-      "yyyy-MM-dd"
-    );
-    const today = format(new Date(), "yyyy-MM-dd");
-    setFromDate(firstDay);
-    setToDate(today);
-    setBranch("ALL");
-    onFilterChange({
-      fromDate: firstDay,
-      toDate: today,
-    });
-  };
-
-  const removeFilter = (key: string) => {
-    if (key === "branch") {
-      setBranch("ALL");
+    switch (value) {
+      case "Today":
+        newFrom = now;
+        newTo = now;
+        break;
+      case "This Week":
+        newFrom = startOfWeek(now, { weekStartsOn: 1 }); // Monday start
+        newTo = endOfWeek(now, { weekStartsOn: 1 });
+        break;
+      case "This Month":
+        newFrom = startOfMonth(now);
+        newTo = endOfMonth(now);
+        break;
+      case "Custom Range":
+        // Don't change dates, just let user pick
+        newFrom = fromDate;
+        newTo = toDate;
+        break;
     }
-    handleApplyFilters();
+
+    if (value !== "Custom Range") {
+      setFromDate(newFrom);
+      setToDate(newTo);
+      // Auto-apply for presets to save a click
+      if (newFrom && newTo) {
+        onFilterChange({
+          fromDate: format(newFrom, "yyyy-MM-dd"),
+          toDate: format(newTo, "yyyy-MM-dd"),
+          division: "all",
+        });
+      }
+    }
   };
+
+  const handleApply = () => {
+    if (fromDate && toDate) {
+      onFilterChange({
+        fromDate: format(fromDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd"),
+        division: "all",
+      });
+    }
+  };
+
+  const handleClear = () => {
+    // Reset to "This Month"
+    setDatePreset("This Month");
+    const now = new Date();
+    const start = startOfMonth(now);
+    const end = endOfMonth(now);
+    setFromDate(start);
+    setToDate(end);
+    onFilterChange({
+      fromDate: format(start, "yyyy-MM-dd"),
+      toDate: format(end, "yyyy-MM-dd"),
+      division: "all",
+    });
+  };
+
+  // Initial Load Trigger
+  useEffect(() => {
+    handleApply();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div className="bg-white rounded-lg shadow p-4 mb-6 sticky top-0 z-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-        <div>
-          <Label htmlFor="fromDate">From Date</Label>
-          <Input
-            id="fromDate"
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="toDate">To Date</Label>
-          <Input
-            id="toDate"
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-          />
-        </div>
-
-        {showBranch && branches.length > 0 && (
-          <div>
-            <Label htmlFor="branch">Branch</Label>
-            <Select value={branch} onValueChange={setBranch}>
-              <SelectTrigger id="branch">
-                <SelectValue placeholder="Select Branch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Branches</SelectItem>
-                {branches.map((br) => (
-                  <SelectItem key={br} value={br}>
-                    {br}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        <div className="flex items-end gap-2">
-          <Button onClick={handleApplyFilters} className="flex-1">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={handleClearFilters} variant="outline">
-            Clear
-          </Button>
-        </div>
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-wrap gap-4 items-end">
+      {/* 1. Date Preset Dropdown */}
+      <div className="w-[200px]">
+        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+          Time Period
+        </label>
+        <Select value={datePreset} onValueChange={handlePresetChange}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select period" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Today">Today</SelectItem>
+            <SelectItem value="This Week">This Week</SelectItem>
+            <SelectItem value="This Month">This Month</SelectItem>
+            <SelectItem value="Custom Range">Custom Range</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {activeFilters.map((filter) => (
-            <Badge key={filter.key} variant="secondary" className="pl-2 pr-1">
-              {filter.label}: {filter.value}
-              <button
-                onClick={() => removeFilter(filter.key)}
-                className="ml-1 hover:bg-gray-300 rounded-full p-0.5"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </Badge>
-          ))}
+      {/* 2. Custom Range Pickers (Only visible if "Custom Range" is selected) */}
+      {datePreset === "Custom Range" && (
+        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+              Start Date
+            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-[140px] justify-start text-left font-normal",
+                    !fromDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {fromDate ? (
+                    format(fromDate, "MMM dd, yyyy")
+                  ) : (
+                    <span>Pick date</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={fromDate}
+                  onSelect={setFromDate}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+              End Date
+            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-[140px] justify-start text-left font-normal",
+                    !toDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {toDate ? (
+                    format(toDate, "MMM dd, yyyy")
+                  ) : (
+                    <span>Pick date</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={toDate}
+                  onSelect={setToDate}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       )}
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2 ml-auto">
+        <Button
+          onClick={handleApply}
+          className="bg-black text-white hover:bg-gray-800 transition-colors"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleClear}
+          className="text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors"
+        >
+          <X className="mr-2 h-4 w-4" />
+          Clear
+        </Button>
+      </div>
     </div>
   );
 }

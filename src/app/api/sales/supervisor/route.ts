@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8056";
 
 async function fetchAll(url: string) {
   try {
