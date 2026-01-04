@@ -2,20 +2,23 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  LineChart,
-  Line,
+  Area,
+  AreaChart,
   BarChart,
   Bar,
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Legend,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
 } from "recharts";
 import {
   DollarSign,
@@ -26,6 +29,7 @@ import {
   Target,
   Store,
   MapPin,
+  ShoppingBag,
   Truck,
   ArrowDownRight,
   Package,
@@ -61,6 +65,7 @@ import { Button } from "@/components/ui/button";
 
 // ------------------ Constants & Types ------------------
 const ITEMS_PER_PAGE = 10;
+const DETAIL_ITEMS_PER_PAGE = 5;
 const PIE_COLORS = ["#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
 
 type SalesmanStats = {
@@ -173,20 +178,31 @@ const IndividualChartsRow = ({
 }: any) => {
   return (
     <div className="space-y-6 mb-6">
+      {/* Target vs Achievement Area Chart */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold">
             Target vs Achievement
           </CardTitle>
-          <CardDescription>Monthly performance tracking</CardDescription>
+          <CardDescription>Daily performance tracking</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
+              <AreaChart
                 data={monthlyData}
                 margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
               >
+                <defs>
+                  <linearGradient id="fillTarget" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="fillAchieved" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
@@ -212,33 +228,25 @@ const IndividualChartsRow = ({
                   }}
                 />
                 <Legend verticalAlign="bottom" height={36} />
-                <Line
-                  type="monotone"
+                <Area
+                  type="natural"
                   dataKey="target"
                   name="Target"
-                  stroke="#8b5cf6"
+                  stroke="#000000"
+                  fill="url(#fillTarget)"
                   strokeWidth={2}
-                  dot={{
-                    r: 4,
-                    fill: "#8b5cf6",
-                    strokeWidth: 2,
-                    stroke: "#fff",
-                  }}
+                  dot={false}
                 />
-                <Line
-                  type="monotone"
+                <Area
+                  type="natural"
                   dataKey="achieved"
                   name="Achieved"
-                  stroke="#10b981"
+                  stroke="#000000"
+                  fill="url(#fillAchieved)"
                   strokeWidth={2}
-                  dot={{
-                    r: 4,
-                    fill: "#10b981",
-                    strokeWidth: 2,
-                    stroke: "#fff",
-                  }}
+                  dot={false}
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
@@ -318,8 +326,8 @@ const IndividualChartsRow = ({
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: "#666" }}
-                    dy={10}
+                    tick={{ fontSize: 9, fill: "#666" }}
+                    dy={12}
                   />
                   <YAxis hide />
                   <Tooltip
@@ -335,7 +343,7 @@ const IndividualChartsRow = ({
                     dataKey="sales"
                     fill="#18181b"
                     radius={[4, 4, 0, 0]}
-                    barSize={40}
+                    barSize={100}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -351,100 +359,171 @@ const DetailedTablesRow = ({
   productData = [],
   returnHistory = [],
 }: {
-  productData?: ProductPerformance[];
-  returnHistory?: ReturnRecord[];
+  productData?: any[];
+  returnHistory?: any[];
 }) => {
+  const [prodPage, setProdPage] = useState(1);
+  const [retPage, setRetPage] = useState(1);
+
+  useEffect(() => {
+    setProdPage(1);
+    setRetPage(1);
+  }, [productData, returnHistory]);
+
+  const totalProdPages = Math.ceil(productData.length / DETAIL_ITEMS_PER_PAGE);
+  const currentProducts = productData.slice(
+    (prodPage - 1) * DETAIL_ITEMS_PER_PAGE,
+    prodPage * DETAIL_ITEMS_PER_PAGE
+  );
+
+  const totalRetPages = Math.ceil(returnHistory.length / DETAIL_ITEMS_PER_PAGE);
+  const currentReturns = returnHistory.slice(
+    (retPage - 1) * DETAIL_ITEMS_PER_PAGE,
+    retPage * DETAIL_ITEMS_PER_PAGE
+  );
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card>
+      {/* Product Performance Table */}
+      <Card className="flex flex-col">
         <CardHeader>
           <CardTitle className="text-base font-semibold">
             Product Performance Details
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="max-h-[300px] overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {productData && productData.length > 0 ? (
-                  productData.map((prod, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium text-sm">
-                        {prod.name}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-gray-700 text-sm">
-                        {formatCurrency(prod.sales)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={2}
-                      className="text-center text-sm text-gray-500"
-                    >
-                      No product data available
+        <CardContent className="flex-1 flex flex-col justify-between">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="text-right">Sales</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {currentProducts.length > 0 ? (
+                currentProducts.map((prod, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium text-sm">
+                      {prod.name}
+                    </TableCell>
+                    {/* Bold Black Sales */}
+                    <TableCell className="text-right font-bold text-gray-900 text-sm">
+                      {formatCurrency(prod.sales)}
                     </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={2}
+                    className="text-center text-sm text-gray-500 py-8"
+                  >
+                    No product data available
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+
+          {productData.length > DETAIL_ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 mt-auto border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setProdPage((p) => Math.max(1, p - 1))}
+                disabled={prodPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-gray-500">
+                Page {prodPage} of {totalProdPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setProdPage((p) => Math.min(totalProdPages, p + 1))
+                }
+                disabled={prodPage === totalProdPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
+      {/* Return History Table */}
+      <Card className="flex flex-col">
         <CardHeader>
           <CardTitle className="text-base font-semibold">
             Return History
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="max-h-[300px] overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-center">Quantity</TableHead>
-                  <TableHead className="text-right">Reason</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {returnHistory && returnHistory.length > 0 ? (
-                  returnHistory.map((ret, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium text-sm">
-                        {ret.product}
-                      </TableCell>
-                      <TableCell className="text-center text-sm">
-                        {ret.quantity}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border">
-                          {ret.reason}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="text-center text-muted-foreground text-sm py-8"
-                    >
-                      No returns recorded for this period.
+        <CardContent className="flex-1 flex flex-col justify-between">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="text-center">Quantity</TableHead>
+                <TableHead className="text-right">Reason</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {currentReturns.length > 0 ? (
+                currentReturns.map((ret, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium text-sm">
+                      {ret.product}
+                    </TableCell>
+                    <TableCell className="text-center text-sm font-bold text-gray-900">
+                      {ret.quantity}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs border border-red-100 font-medium">
+                        {ret.reason}
+                      </span>
                     </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={3}
+                    className="text-center text-muted-foreground text-sm py-8"
+                  >
+                    No returns recorded for this period.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+
+          {returnHistory.length > DETAIL_ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 mt-auto border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRetPage((p) => Math.max(1, p - 1))}
+                disabled={retPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-gray-500">
+                Page {retPage} of {totalRetPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setRetPage((p) => Math.min(totalRetPages, p + 1))
+                }
+                disabled={retPage === totalRetPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -480,6 +559,7 @@ export default function SupervisorDashboard() {
         const query = new URLSearchParams({
           fromDate: filters.fromDate,
           toDate: filters.toDate,
+          salesmanId: selectedSalesman,
         });
 
         const res = await fetch(`/api/sales/supervisor?${query.toString()}`);
@@ -505,7 +585,7 @@ export default function SupervisorDashboard() {
       }
     }
     fetchData();
-  }, [filters]);
+  }, [filters.fromDate, filters.toDate, selectedSalesman]); // OPTIMIZED DEPENDENCY
 
   const activeSalesmanData =
     selectedSalesman === "all"
@@ -653,7 +733,7 @@ export default function SupervisorDashboard() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-blue-600" /> Salesman
-                    Performance (Click the Salesman to view details)
+                    Performance
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -780,7 +860,6 @@ export default function SupervisorDashboard() {
                   </CardHeader>
                   <CardContent className="h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      {/* REPLACED PIE CHART WITH RADAR CHART AS REQUESTED */}
                       <RadarChart
                         cx="50%"
                         cy="50%"
@@ -836,7 +915,7 @@ export default function SupervisorDashboard() {
                         <Tooltip cursor={{ fill: "transparent" }} />
                         <Bar
                           dataKey="strikeRate"
-                          fill="#000000"
+                          fill="#3b82f6"
                           radius={[0, 4, 4, 0]}
                           barSize={20}
                         />
@@ -854,24 +933,12 @@ export default function SupervisorDashboard() {
                 productData={data.topProducts}
                 supplierData={data.topSuppliers}
               />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Product Performance</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-64 flex items-center justify-center text-gray-400">
-                    Detailed product table coming soon
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Return History</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-64 flex items-center justify-center text-gray-400">
-                    Detailed returns table coming soon
-                  </CardContent>
-                </Card>
-              </div>
+
+              {/* Data Tables */}
+              <DetailedTablesRow
+                productData={data.topProducts}
+                returnHistory={data.returnHistory}
+              />
             </div>
           )}
         </div>
