@@ -915,7 +915,7 @@ export default function SupervisorDashboard() {
                         <Tooltip cursor={{ fill: "transparent" }} />
                         <Bar
                           dataKey="strikeRate"
-                          fill="#3b82f6"
+                          fill="#00000"
                           radius={[0, 4, 4, 0]}
                           barSize={20}
                         />
