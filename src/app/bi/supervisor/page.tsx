@@ -871,8 +871,8 @@ export default function SupervisorDashboard() {
                         <Radar
                           name="Stores"
                           dataKey="count"
-                          stroke="#3b82f6"
-                          fill="#3b82f6"
+                          stroke="#000000"
+                          fill="#000000"
                           fillOpacity={0.6}
                           dot={{
                             r: 4,
