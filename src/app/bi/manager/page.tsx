@@ -2,26 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
+  Area,
+  AreaChart,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Legend,
+  BarChart,
+  Bar,
 } from "recharts";
 import {
   PackageCheck,
   AlertCircle,
-  TrendingUp,
   Activity,
-  Users,
   Truck,
   ChevronRight,
   ChevronDown,
@@ -29,9 +28,9 @@ import {
   Award,
   ShoppingBag,
   ChevronLeft,
+  Users,
 } from "lucide-react";
 import { FilterBar } from "@/components/dashboard/FilterBar";
-import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 import type { DashboardFilters } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,7 +67,6 @@ interface DashboardData {
   };
 }
 
-const PIE_COLORS = ["#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
 const DIVISIONS = [
   "Overview",
   "Dry Goods",
@@ -76,7 +74,7 @@ const DIVISIONS = [
   "Mama Pina's",
   "Frozen Goods",
 ];
-const ITEMS_PER_PAGE = 5; // Pagination Limit
+const ITEMS_PER_PAGE = 5;
 
 export default function ManagerDashboard() {
   const [activeTab, setActiveTab] = useState(DIVISIONS[0]);
@@ -97,7 +95,7 @@ export default function ManagerDashboard() {
 
   const onFilterUpdate = useCallback((newFilters: DashboardFilters) => {
     setFilters(newFilters);
-    setSupplierPage(1); // Reset page on filter change
+    setSupplierPage(1);
   }, []);
 
   useEffect(() => {
@@ -113,7 +111,6 @@ export default function ManagerDashboard() {
           activeTab: activeTab,
         });
 
-        // FIXED: Correct URL matching your file path
         const res = await fetch(`/api/sales/manager?${query.toString()}`);
 
         if (!res.ok) {
@@ -163,6 +160,16 @@ export default function ManagerDashboard() {
     if (supplierPage > 1) setSupplierPage((prev) => prev - 1);
   };
 
+  // Helper to calculate bad stock % for the red line
+  const calculateBadStockRate = () => {
+    if (!data || data.badStock.totalInflow === 0) return 0;
+    // Cap at 100% for visual sanity
+    return Math.min(
+      100,
+      (data.badStock.accumulated / data.badStock.totalInflow) * 100
+    );
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 min-h-screen relative">
       {loading && (
@@ -171,39 +178,47 @@ export default function ManagerDashboard() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Inventory & Sales Manager
-          </h1>
-          <p className="text-gray-500">
-            Tracking stock velocity, returns, and sales performance
-          </p>
-        </div>
-
-        <div className="w-full md:w-[200px]">
-          <Select
-            value={activeTab}
-            onValueChange={(val) => {
-              setActiveTab(val);
-              setSupplierPage(1);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select Division" />
-            </SelectTrigger>
-            <SelectContent>
-              {DIVISIONS.map((div) => (
-                <SelectItem key={div} value={div}>
-                  {div}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* HEADER SECTION */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">
+          Inventory & Sales Manager
+        </h1>
+        <p className="text-gray-500">
+          Tracking stock velocity, returns, and sales performance
+        </p>
       </div>
 
-      <FilterBar onFilterChange={onFilterUpdate} branches={[]} />
+      {/* UNIFIED FILTER ROW: Division + FilterBar */}
+      <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center">
+        {/* Division Selector */}
+        <div className="w-full xl:w-[250px]">
+          <div className="bg-white p-1 rounded-lg border shadow-sm">
+            <Select
+              value={activeTab}
+              onValueChange={(val) => {
+                setActiveTab(val);
+                setSupplierPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full border-0 focus:ring-0 shadow-none h-auto py-2">
+                <SelectValue placeholder="Select Division" />
+              </SelectTrigger>
+              <SelectContent>
+                {DIVISIONS.map((div) => (
+                  <SelectItem key={div} value={div}>
+                    {div}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Date & Time Filters */}
+        <div className="flex-1 w-full">
+          <FilterBar onFilterChange={onFilterUpdate} branches={[]} />
+        </div>
+      </div>
 
       {errorMsg ? (
         <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-100">
@@ -216,7 +231,9 @@ export default function ManagerDashboard() {
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {/* KPI CARDS ROW */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Good Stock Card */}
             <Card className="shadow-sm border-emerald-100">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -243,9 +260,10 @@ export default function ManagerDashboard() {
                     {data.goodStock.status}
                   </span>
                 </div>
+                {/* CHANGED: Bar color to BLACK (#18181b or gray-900) */}
                 <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
                   <div
-                    className="bg-emerald-500 h-2 rounded-full"
+                    className="bg-gray-900 h-2 rounded-full"
                     style={{ width: `${data.goodStock.velocityRate}%` }}
                   />
                 </div>
@@ -266,6 +284,7 @@ export default function ManagerDashboard() {
               </CardContent>
             </Card>
 
+            {/* Bad Stock Card */}
             <Card className="shadow-sm border-red-100">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -292,18 +311,34 @@ export default function ManagerDashboard() {
                     {data.badStock.status}
                   </span>
                 </div>
-                <div className="text-sm text-gray-600 mt-8">
-                  <p>
+
+                {/* ADDED: Red Progress Line for Bad Stock Visualization */}
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
+                  <div
+                    className="bg-red-600 h-2 rounded-full"
+                    style={{ width: `${calculateBadStockRate()}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>
+                    Accumulated:{" "}
+                    <strong>
+                      {data.badStock.accumulated.toLocaleString()}
+                    </strong>
+                  </span>
+                  <span>
                     Returns Volume:{" "}
-                    <span className="font-bold text-red-600">
-                      +{data.badStock.totalInflow.toLocaleString()} units
-                    </span>
-                  </p>
+                    <strong className="text-red-600">
+                      +{data.badStock.totalInflow.toLocaleString()}
+                    </strong>
+                  </span>
                 </div>
               </CardContent>
             </Card>
           </div>
 
+          {/* STOCK MOVEMENT TREND */}
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -313,10 +348,30 @@ export default function ManagerDashboard() {
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
+                <AreaChart
                   data={data.trendData}
                   margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                 >
+                  <defs>
+                    {/* Good Stock - Black */}
+                    <linearGradient id="fillGood" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#18181b" stopOpacity={0.8} />
+                      <stop
+                        offset="95%"
+                        stopColor="#18181b"
+                        stopOpacity={0.1}
+                      />
+                    </linearGradient>
+                    {/* Bad Stock - Red */}
+                    <linearGradient id="fillBad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                      <stop
+                        offset="95%"
+                        stopColor="#ef4444"
+                        stopOpacity={0.1}
+                      />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
@@ -327,6 +382,7 @@ export default function ManagerDashboard() {
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 12, fill: "#888" }}
+                    minTickGap={32}
                   />
                   <YAxis
                     axisLine={false}
@@ -340,63 +396,63 @@ export default function ManagerDashboard() {
                       boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                     }}
                   />
-                  <Legend />
-                  <Line
-                    type="monotone"
+                  <Legend verticalAlign="top" height={36} />
+
+                  <Area
+                    type="natural"
                     dataKey="goodStockOutflow"
                     name="Good Stock Out"
-                    stroke="#10b981"
-                    strokeWidth={3}
-                    dot={false}
+                    stroke="#18181b"
+                    fill="url(#fillGood)"
+                    strokeWidth={2}
+                    stackId="a"
                   />
-                  <Line
-                    type="monotone"
+                  <Area
+                    type="natural"
                     dataKey="badStockInflow"
                     name="Bad Stock In"
                     stroke="#ef4444"
-                    strokeWidth={3}
-                    strokeDasharray="4 4"
-                    dot={false}
+                    fill="url(#fillBad)"
+                    strokeWidth={2}
+                    stackId="a"
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
+          {/* CHARTS ROW: RADAR CHART (Supplier) + BAR CHART (Salesman) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="shadow-sm">
-              <CardHeader>
+            {/* Sales per Supplier (Radar Chart) */}
+            <Card className="shadow-sm flex flex-col">
+              <CardHeader className="items-center pb-0">
                 <CardTitle className="flex items-center gap-2">
                   <Truck className="h-5 w-5 text-blue-600" /> Sales per Supplier
                 </CardTitle>
               </CardHeader>
-              <CardContent className="h-[350px]">
+              <CardContent className="flex-1 pb-0 min-h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={data.salesBySupplier}
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {data.salesBySupplier?.map(
-                        (entry: any, index: number) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={PIE_COLORS[index % PIE_COLORS.length]}
-                          />
-                        )
-                      )}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => formatPHP(value)} />
-                    <Legend
-                      layout="vertical"
-                      verticalAlign="middle"
-                      align="right"
-                      wrapperStyle={{ fontSize: "11px" }}
+                  <RadarChart
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="80%"
+                    data={data.salesBySupplier}
+                  >
+                    <PolarGrid gridType="circle" radialLines={false} />
+                    <PolarAngleAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: "#666" }}
                     />
-                  </PieChart>
+                    <Tooltip formatter={(value: number) => formatPHP(value)} />
+                    <Radar
+                      name="Sales"
+                      dataKey="value"
+                      stroke="#000000"
+                      fill="#000000"
+                      fillOpacity={0.6}
+                      dot={{ r: 4, fillOpacity: 1 }}
+                    />
+                  </RadarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
@@ -432,11 +488,16 @@ export default function ManagerDashboard() {
                     <Tooltip
                       cursor={{ fill: "transparent" }}
                       formatter={(value: number) => formatPHP(value)}
+                      contentStyle={{
+                        borderRadius: "8px",
+                        border: "none",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      }}
                     />
                     <Bar
                       dataKey="value"
-                      fill="#3b82f6"
-                      radius={[0, 4, 4, 0]}
+                      fill="#000000"
+                      radius={[0, 0, 0, 0]}
                       barSize={20}
                     />
                   </BarChart>
@@ -588,56 +649,59 @@ export default function ManagerDashboard() {
             </CardContent>
           </Card>
 
-          {activeTab === "Overview" && data.divisionBreakdown && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
-              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <LayoutGrid className="h-5 w-5 text-blue-600" />
-                  Division Overview Summary
-                </h3>
-              </div>
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-600 font-medium">
-                  <tr>
-                    <th className="py-3 px-6">Division</th>
-                    <th className="py-3 px-6 text-center">Velocity</th>
-                    <th className="py-3 px-6 text-right">Good Stock Out</th>
-                    <th className="py-3 px-6 text-right">Bad Stock In</th>
-                    <th className="py-3 px-6 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {data.divisionBreakdown.map((div: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="py-3 px-6 font-medium text-gray-900">
-                        {div.division}
-                      </td>
-                      <td className="py-3 px-6 text-center font-bold text-blue-600">
-                        {div.goodStock.velocityRate}%
-                      </td>
-                      <td className="py-3 px-6 text-right text-gray-700">
-                        {div.goodStock.totalOutflow.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-6 text-right text-red-600">
-                        {div.badStock.accumulated.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-6 text-center">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-bold ${
-                            div.goodStock.status === "Healthy"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {div.goodStock.status}
-                        </span>
-                      </td>
+          {/* Division Overview Summary - Only visible when activeTab is Overview */}
+          {activeTab === "Overview" &&
+            data.divisionBreakdown &&
+            data.divisionBreakdown.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <LayoutGrid className="h-5 w-5 text-blue-600" />
+                    Division Overview Summary
+                  </h3>
+                </div>
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-gray-600 font-medium">
+                    <tr>
+                      <th className="py-3 px-6">Division</th>
+                      <th className="py-3 px-6 text-center">Velocity</th>
+                      <th className="py-3 px-6 text-right">Good Stock Out</th>
+                      <th className="py-3 px-6 text-right">Bad Stock In</th>
+                      <th className="py-3 px-6 text-center">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.divisionBreakdown.map((div: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="py-3 px-6 font-medium text-gray-900">
+                          {div.division}
+                        </td>
+                        <td className="py-3 px-6 text-center font-bold text-blue-600">
+                          {div.goodStock.velocityRate}%
+                        </td>
+                        <td className="py-3 px-6 text-right text-gray-700">
+                          {div.goodStock.totalOutflow.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-6 text-right text-red-600">
+                          {div.badStock.accumulated.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-6 text-center">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-bold ${
+                              div.goodStock.status === "Healthy"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {div.goodStock.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </div>
       )}
     </div>

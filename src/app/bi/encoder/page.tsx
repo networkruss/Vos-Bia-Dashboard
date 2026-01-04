@@ -134,7 +134,7 @@ export default function SalesmanDashboard() {
 
   // --- Pagination State ---
   const [returnPage, setReturnPage] = useState(1);
-  const [productPage, setProductPage] = useState(1); // Added for Product pagination
+  const [productPage, setProductPage] = useState(1);
   const itemsPerPage = 5;
 
   // Initial Load: Fetch Salesmen List
@@ -167,8 +167,8 @@ export default function SalesmanDashboard() {
 
     async function fetchDashboard() {
       setLoading(true);
-      setReturnPage(1); // Reset pagination when salesman changes
-      setProductPage(1); // Reset product pagination
+      setReturnPage(1);
+      setProductPage(1);
       try {
         const res = await fetch(
           `/api/sales/encoder?type=dashboard&salesmanId=${selectedSalesman}`
@@ -187,56 +187,8 @@ export default function SalesmanDashboard() {
           const fullData: DashboardData = {
             ...json.data,
             topProducts: processedProducts,
-            supplierSales: json.data.supplierSales || [
-              { name: "Supplier C", value: 450000 },
-              { name: "Supplier A", value: 420000 },
-              { name: "Supplier B", value: 390000 },
-              { name: "Supplier D", value: 230000 },
-            ],
-            returnHistory: json.data.returnHistory || [
-              {
-                id: "SR002",
-                product: "Product Beta",
-                date: "6/12/2025",
-                quantity: 3,
-                reason: "Wrong Item",
-              },
-              {
-                id: "SR001",
-                product: "Product Alpha",
-                date: "6/10/2025",
-                quantity: 5,
-                reason: "Damaged",
-              },
-              {
-                id: "SR003",
-                product: "Product Gamma",
-                date: "6/09/2025",
-                quantity: 1,
-                reason: "Defective",
-              },
-              {
-                id: "SR004",
-                product: "Product Delta",
-                date: "6/08/2025",
-                quantity: 2,
-                reason: "Wrong Color",
-              },
-              {
-                id: "SR005",
-                product: "Product Epsilon",
-                date: "6/07/2025",
-                quantity: 10,
-                reason: "Expired",
-              },
-              {
-                id: "SR006",
-                product: "Product Zeta",
-                date: "6/06/2025",
-                quantity: 4,
-                reason: "Damaged",
-              },
-            ],
+            supplierSales: json.data.supplierSales || [],
+            returnHistory: json.data.returnHistory || [],
           };
           setData(fullData);
         }
@@ -249,11 +201,10 @@ export default function SalesmanDashboard() {
     fetchDashboard();
   }, [selectedSalesman]);
 
-  // --- Pagination Logic: Returns ---
+  // --- Pagination Logic ---
   const totalReturnPages = data
     ? Math.ceil(data.returnHistory.length / itemsPerPage)
     : 0;
-
   const currentReturns = data
     ? data.returnHistory.slice(
         (returnPage - 1) * itemsPerPage,
@@ -261,19 +212,9 @@ export default function SalesmanDashboard() {
       )
     : [];
 
-  const handleNextReturnPage = () => {
-    if (returnPage < totalReturnPages) setReturnPage(returnPage + 1);
-  };
-
-  const handlePrevReturnPage = () => {
-    if (returnPage > 1) setReturnPage(returnPage - 1);
-  };
-
-  // --- Pagination Logic: Products ---
   const totalProductPages = data
     ? Math.ceil(data.topProducts.length / itemsPerPage)
     : 0;
-
   const currentProducts = data
     ? data.topProducts.slice(
         (productPage - 1) * itemsPerPage,
@@ -281,13 +222,15 @@ export default function SalesmanDashboard() {
       )
     : [];
 
-  const handleNextProductPage = () => {
-    if (productPage < totalProductPages) setProductPage(productPage + 1);
-  };
-
-  const handlePrevProductPage = () => {
-    if (productPage > 1) setProductPage(productPage - 1);
-  };
+  // Handlers
+  const handleNextReturnPage = () =>
+    returnPage < totalReturnPages && setReturnPage(returnPage + 1);
+  const handlePrevReturnPage = () =>
+    returnPage > 1 && setReturnPage(returnPage - 1);
+  const handleNextProductPage = () =>
+    productPage < totalProductPages && setProductPage(productPage + 1);
+  const handlePrevProductPage = () =>
+    productPage > 1 && setProductPage(productPage - 1);
 
   if (loading || !data) {
     return (
@@ -456,7 +399,7 @@ export default function SalesmanDashboard() {
             </p>
           </div>
 
-          {/* Achievement Trend */}
+          {/* Achievement Trend - UPDATED TO SUPERVISOR STYLE */}
           <div>
             <h3 className="font-bold text-md mb-4">Target Achievement Trend</h3>
             <div className="h-[300px] w-full">
@@ -466,32 +409,26 @@ export default function SalesmanDashboard() {
                   margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                 >
                   <defs>
-                    <linearGradient
-                      id="colorAchieved"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#000000" stopOpacity={0.3} />
+                    <linearGradient id="fillTarget" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
                       <stop
                         offset="95%"
-                        stopColor="#000000"
-                        stopOpacity={0.5}
+                        stopColor="#8b5cf6"
+                        stopOpacity={0.1}
                       />
                     </linearGradient>
                     <linearGradient
-                      id="colorTarget"
+                      id="fillAchieved"
                       x1="0"
                       y1="0"
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor="#000000" stopOpacity={0.3} />
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
                       <stop
                         offset="95%"
-                        stopColor="#000000"
-                        stopOpacity={0.5}
+                        stopColor="#3b82f6"
+                        stopOpacity={0.1}
                       />
                     </linearGradient>
                   </defs>
@@ -519,25 +456,24 @@ export default function SalesmanDashboard() {
                       boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                     }}
                   />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    iconType="circle"
-                  />
+                  <Legend verticalAlign="bottom" height={36} />
                   <Area
-                    type="monotone"
+                    type="natural"
                     dataKey="target"
                     name="Target"
-                    stroke="none"
-                    fill="url(#colorTarget)"
+                    stroke="#000000"
+                    fill="url(#fillTarget)"
+                    strokeWidth={2}
+                    dot={false}
                   />
                   <Area
-                    type="monotone"
+                    type="natural"
                     dataKey="achieved"
                     name="Achieved"
-                    stroke="#333333"
+                    stroke="#000000"
+                    fill="url(#fillAchieved)"
                     strokeWidth={2}
-                    fill="url(#colorAchieved)"
+                    dot={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -643,7 +579,7 @@ export default function SalesmanDashboard() {
                   <Bar
                     dataKey="value"
                     fill="#000000"
-                    radius={[0, 4, 4, 0]}
+                    radius={[0, 0, 0, 0]}
                     barSize={24}
                   />
                 </BarChart>
@@ -690,8 +626,8 @@ export default function SalesmanDashboard() {
                   <Bar
                     dataKey="value"
                     fill="#000000"
-                    radius={[4, 4, 0, 0]}
-                    barSize={50}
+                    radius={[0, 0, 0, 0]}
+                    barSize={100}
                   />
                 </BarChart>
               </ResponsiveContainer>
