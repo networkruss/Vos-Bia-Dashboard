@@ -41,6 +41,19 @@ function normalizeDate(d: string | null) {
   return d;
 }
 
+// Generate array of dates between start and end
+function getDatesInRange(startDate: string, endDate: string) {
+  const date = new Date(startDate);
+  const end = new Date(endDate);
+  const dates = [];
+
+  while (date <= end) {
+    dates.push(new Date(date).toISOString().split("T")[0]);
+    date.setDate(date.getDate() + 1);
+  }
+  return dates;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -99,6 +112,11 @@ export async function GET(request: Request) {
       productMap.set(String(p.product_id), p.product_name)
     );
 
+    const customerMap = new Map();
+    customers.forEach((c: any) =>
+      customerMap.set(String(c.customer_code), c.store_name)
+    );
+
     const supplierMap = new Map<string, string>();
     suppliers.forEach((s: any) =>
       supplierMap.set(String(s.id), s.supplier_name)
@@ -141,7 +159,7 @@ export async function GET(request: Request) {
     const supplierSalesMap = new Map<string, number>();
     const trendMap = new Map<string, number>();
 
-    // INITIALIZE ALL SALESMEN (Do NOT filter here, so dropdown has everyone)
+    // INITIALIZE ALL SALESMEN
     salesmen.forEach((s: any) => {
       if (s.isActive) {
         salesmanStats.set(String(s.id), {
@@ -172,14 +190,14 @@ export async function GET(request: Request) {
       const sId = String(inv.salesman_id);
       const amount = Number(inv.total_amount) || 0;
 
-      // 1. Update Individual Salesman Stats (Always update this)
+      // 1. Update Individual Stats (Always)
       const stats = salesmanStats.get(sId);
       if (stats) {
         stats.netSales += amount;
         stats.orders += 1;
       }
 
-      // 2. Update Dashboard Metrics (Filter here!)
+      // 2. Update Dashboard Metrics (Based on Filter)
       const isIncluded =
         !salesmanId || salesmanId === "all" || salesmanId === sId;
 
@@ -202,7 +220,7 @@ export async function GET(request: Request) {
           const pName = productMap.get(pId) || `Product ${pId}`;
           const sName = getSupplierName(pId);
 
-          // 1. Update Individual Stats
+          // 1. Individual Stats
           const stats = salesmanStats.get(sId);
           if (stats) {
             stats.productCounts.set(
@@ -211,10 +229,9 @@ export async function GET(request: Request) {
             );
           }
 
-          // 2. Update Dashboard Metrics (Filter here!)
+          // 2. Dashboard Metrics (Filtered)
           const isIncluded =
             !salesmanId || salesmanId === "all" || salesmanId === sId;
-
           if (isIncluded) {
             productSalesMap.set(
               pName,
@@ -233,7 +250,6 @@ export async function GET(request: Request) {
     const returnHistoryList: any[] = [];
     const validReturnIds = new Set();
 
-    // Filter returns based on selection
     returns.forEach((r: any) => {
       const sId = String(r.salesman_id);
       const isIncluded =
@@ -293,7 +309,6 @@ export async function GET(request: Request) {
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 50);
 
-    // Format List of Salesmen (This will contain EVERYONE, filtered or not)
     const salesmenList = Array.from(salesmanStats.values())
       .map((s: any) => {
         let topP = "N/A";
@@ -322,8 +337,7 @@ export async function GET(request: Request) {
       })
       .sort((a, b) => b.netSales - a.netSales);
 
-    // Calculate Target based on Filter
-    // If 'all', sum of all targets. If specific, just that one.
+    // Target Calculation
     let teamTarget = 0;
     if (!salesmanId || salesmanId === "all") {
       teamTarget = salesmenList.length * 500000;
@@ -331,28 +345,27 @@ export async function GET(request: Request) {
       teamTarget = 500000;
     }
 
-    // Dynamic Chart Data
-    const sortedDates = Array.from(trendMap.keys()).sort();
-    const dailyTarget = Math.round(teamTarget / 30);
-
+    // --- 5. DYNAMIC CHART DATA (FIXED) ---
+    // Generate ALL dates in the range, not just ones with sales
     let dynamicPerformance: any[] = [];
-    if (sortedDates.length > 0) {
-      dynamicPerformance = sortedDates.map((date) => {
-        const d = new Date(date);
+
+    if (fromDate && toDate) {
+      const allDates = getDatesInRange(fromDate, toDate);
+      const dailyTarget = Math.round(teamTarget / allDates.length);
+
+      dynamicPerformance = allDates.map((dateStr) => {
+        const d = new Date(dateStr);
         return {
           month: d.toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
           }),
           target: dailyTarget,
-          achieved: trendMap.get(date) || 0,
+          achieved: trendMap.get(dateStr) || 0, // Default to 0 if no sales
         };
       });
-    } else {
-      dynamicPerformance = [];
     }
 
-    // Coverage Distribution (Just basic logic for now)
     let sariSariCount = 0;
     let restoCount = 0;
     let othersCount = 0;
@@ -380,8 +393,8 @@ export async function GET(request: Request) {
         totalInvoices: invoices.length,
         penetrationRate,
         coverageDistribution,
-        salesmen: salesmenList, // This is the FULL list now
-        monthlyPerformance: dynamicPerformance,
+        salesmen: salesmenList,
+        monthlyPerformance: dynamicPerformance, // NOW FULL RANGE
         topProducts,
         topSuppliers,
         returnHistory: finalReturnHistory,
