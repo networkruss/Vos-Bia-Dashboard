@@ -6,9 +6,6 @@ import {
   AreaChart,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -29,7 +26,6 @@ import {
   Target,
   Store,
   MapPin,
-  ShoppingBag,
   Truck,
   ArrowDownRight,
   Package,
@@ -66,7 +62,7 @@ import { Button } from "@/components/ui/button";
 // ------------------ Constants & Types ------------------
 const ITEMS_PER_PAGE = 10;
 const DETAIL_ITEMS_PER_PAGE = 5;
-const PIE_COLORS = ["#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
+// PIE_COLORS removed (unused)
 
 type SalesmanStats = {
   id: string;
@@ -366,8 +362,11 @@ const DetailedTablesRow = ({
   const [retPage, setRetPage] = useState(1);
 
   useEffect(() => {
-    setProdPage(1);
-    setRetPage(1);
+    const t = setTimeout(() => {
+      setProdPage(1);
+      setRetPage(1);
+    }, 0);
+    return () => clearTimeout(t);
   }, [productData, returnHistory]);
 
   const totalProdPages = Math.ceil(productData.length / DETAIL_ITEMS_PER_PAGE);

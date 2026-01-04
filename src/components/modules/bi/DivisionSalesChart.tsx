@@ -58,8 +58,8 @@ export const DivisionSalesChart = ({
         data={data}
         margin={{ top: 40, right: 30, left: 20, bottom: 20 }}
         onClick={(state) => {
-          if (onBarClick && state && state.activeLabel) {
-            onBarClick(state.activeLabel);
+          if (onBarClick && state && state.activeLabel !== undefined) {
+            onBarClick(String(state.activeLabel));
           }
         }}
       >
@@ -103,7 +103,6 @@ export const DivisionSalesChart = ({
           dataKey="netSales"
           radius={[8, 8, 0, 0]}
           maxBarSize={120}
-          minBarSize={60}
           label={<CustomBarLabel />}
         >
           {data.map((entry, index) => {

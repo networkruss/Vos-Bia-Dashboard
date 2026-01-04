@@ -34,12 +34,14 @@ export function SupplierSalesChart({ data }: SupplierSalesChartProps) {
           // 1. CLICK HANDLER: Manages selection state
           onClick={(state) => {
             if (state && state.activeTooltipIndex !== undefined) {
-              // Toggle: if clicking the same bar, reset; otherwise set active
-              setActiveIndex(
-                state.activeTooltipIndex === activeIndex
-                  ? null
-                  : state.activeTooltipIndex
-              );
+              const raw = state.activeTooltipIndex as any;
+              const idx =
+                typeof raw === "number" ? raw : parseInt(String(raw), 10);
+              if (isNaN(idx)) {
+                setActiveIndex(null);
+              } else {
+                setActiveIndex(idx === activeIndex ? null : idx);
+              }
             } else {
               // Clicking chart background resets selection
               setActiveIndex(null);

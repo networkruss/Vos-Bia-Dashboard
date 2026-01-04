@@ -171,5 +171,5 @@ export interface ExecutiveDashboardData {
 }
 
 // Exporting the main required types for the Executive Dashboard
-export { ExecutiveDashboardData as DashboardData };
-export { SalesSummary as SummaryBand };
+export type { ExecutiveDashboardData as DashboardData };
+export type { SalesSummary as SummaryBand };

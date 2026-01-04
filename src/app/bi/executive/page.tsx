@@ -38,11 +38,10 @@ export default function ExecutiveDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const query = new URLSearchParams({
-          fromDate: filters.fromDate,
-          toDate: filters.toDate,
-          division: filters.division,
-        });
+        const query = new URLSearchParams();
+        query.set("fromDate", filters.fromDate);
+        query.set("toDate", filters.toDate);
+        if (filters.division) query.set("division", filters.division);
 
         const res = await fetch(`/api/sales/executive?${query.toString()}`);
         if (!res.ok) throw new Error("Failed to fetch executive data");

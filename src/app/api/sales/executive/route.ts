@@ -157,7 +157,7 @@ async function fetchAll<T = any>(url: string): Promise<T[]> {
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data as T[]) || [];
-  } catch (error) {
+  } catch {
     return [];
   }
 }

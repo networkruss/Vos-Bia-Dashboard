@@ -132,7 +132,7 @@ export async function GET(request: Request) {
       if (!inv) return;
 
       const divId = salesmanDivisionMap.get(String(inv.salesman_id));
-      const division = divisionNameMap.get(divId) || "Unassigned";
+      const division = String(divisionNameMap.get(divId) || "Unassigned");
 
       if (
         divisionFilter &&
@@ -144,7 +144,7 @@ export async function GET(request: Request) {
       const masterProduct =
         productParentMap.get(det.product_id) || det.product_id;
       const supplierId = String(primarySupplierMap.get(masterProduct));
-      const supplier = supplierNameMap.get(supplierId) || "No Supplier";
+      const supplier = String(supplierNameMap.get(supplierId) || "No Supplier");
 
       const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
       const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };

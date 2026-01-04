@@ -57,27 +57,25 @@ export function Sidebar() {
   const [isCOO, setIsCOO] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Don't render sidebar on login page
-  if (pathname === "/") {
-    return null;
-  }
-
   useEffect(() => {
-    setMounted(true);
+    const t = setTimeout(() => {
+      setMounted(true);
 
-    // Get user role from localStorage (only on client side)
-    if (typeof window !== "undefined") {
-      const userStr = localStorage.getItem("user");
-      if (userStr) {
-        try {
-          const user = JSON.parse(userStr);
-          setUserRole(user.role);
-          setIsCOO(user.isCOO || false);
-        } catch (e) {
-          console.error("Error parsing user data:", e);
+      // Get user role from localStorage (only on client side)
+      if (typeof window !== "undefined") {
+        const userStr = localStorage.getItem("user");
+        if (userStr) {
+          try {
+            const user = JSON.parse(userStr);
+            setUserRole(user.role);
+            setIsCOO(user.isCOO || false);
+          } catch (e) {
+            console.error("Error parsing user data:", e);
+          }
         }
       }
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   const handleLogout = () => {
@@ -114,6 +112,11 @@ export function Sidebar() {
         </div>
       </aside>
     );
+  }
+
+  // Don't render sidebar on login page
+  if (pathname === "/") {
+    return null;
   }
 
   return (

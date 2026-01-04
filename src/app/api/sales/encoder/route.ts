@@ -242,7 +242,14 @@ export async function GET(request: Request) {
 
       // --- 5. TACTICAL SKU (Real Data) ---
       // Assuming tactical_sku table has: product_id, target_amount
-      const skuPerformance = [];
+      const skuPerformance: Array<{
+        product: string;
+        target: number;
+        achieved: number;
+        gap: number;
+        gapPercent: number;
+        status: string;
+      }> = [];
       // If no tactical skus set, use Top 5 products as fallback
       const skuSource =
         tacticalSkus.length > 0 ? tacticalSkus : topProducts.slice(0, 5);
@@ -254,7 +261,7 @@ export async function GET(request: Request) {
 
         if (tacticalSkus.length > 0) {
           // Real Tactical SKU Logic
-          pName = productMap.get(item.product_id) || "Unknown SKU";
+          pName = String(productMap.get(item.product_id) || "Unknown SKU");
           target = Number(item.target_amount) || 1000;
           achieved = productSales.get(pName)?.value || 0;
         } else {
