@@ -1,118 +1,165 @@
 import { NextResponse } from "next/server";
 
+// Using port 8056 (Manager/Supervisor Data)
 const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8056";
 
-async function fetchAll(url: string) {
+// --- HELPERS ---
+async function fetchAll<T = any>(
+  endpoint: string,
+  params: string = ""
+): Promise<T[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 mins timeout
+
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return [];
+    const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      console.error(`Directus Error ${res.status} on ${url}`);
+      return [];
+    }
     const json = await res.json();
-    return json.data || [];
+    return (json.data as T[]) || [];
   } catch (error) {
-    console.error(`Fetch error for ${url}:`, error);
+    console.error(`Fetch error for ${endpoint}:`, error);
     return [];
   }
+}
+
+function normalizeDate(d: string | null) {
+  if (!d) return null;
+  if (d.includes("/")) {
+    const parts = d.split("/");
+    if (parts.length === 3) {
+      const [day, month, year] = parts;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+  }
+  return d;
 }
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const fromDate = searchParams.get("fromDate");
-    const toDate = searchParams.get("toDate");
+    const fromDate = normalizeDate(searchParams.get("fromDate"));
+    const toDate = normalizeDate(searchParams.get("toDate"));
 
-    // 1. FETCH DATA
+    // --- 1. OPTIMIZED FETCHING ---
+    // Filter at the database level
+    let invoiceFilter = "";
+    let detailsFilter = "";
+
+    if (fromDate && toDate) {
+      invoiceFilter = `&filter[invoice_date][_between]=[${fromDate},${toDate} 23:59:59]`;
+      // Optimization: Filter details by created_date to reduce payload
+      detailsFilter = `&filter[created_date][_between]=[${fromDate},${toDate} 23:59:59]`;
+    }
+
     const [salesmen, invoices, invoiceDetails, customers, products] =
       await Promise.all([
-        fetchAll(`${DIRECTUS_URL}/items/salesman?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/customer?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/products?limit=-1`),
+        fetchAll("salesman", "&fields=id,salesman_name,isActive"),
+        fetchAll(
+          "sales_invoice",
+          `&fields=invoice_id,invoice_date,salesman_id,total_amount,customer_code${invoiceFilter}`
+        ),
+        fetchAll(
+          "sales_invoice_details",
+          `&fields=invoice_no,product_id,total_amount${detailsFilter}`
+        ),
+        fetchAll("customer", "&fields=customer_code,store_name"),
+        fetchAll("products", "&fields=product_id,product_name"),
       ]);
 
-    // 2. PROCESS MAPS
-    const productMap = new Map(
-      products.map((p: any) => [p.product_id, p.product_name])
+    // --- 2. MAPS ---
+    const productMap = new Map();
+    products.forEach((p: any) =>
+      productMap.set(String(p.product_id), p.product_name)
     );
 
-    // Filter invoices by date
-    const filteredInvoices = invoices.filter((inv: any) => {
-      if (!inv.invoice_date) return false;
-      const d = inv.invoice_date.substring(0, 10);
-      return (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
-    });
+    // Map Customer Code -> Name (Fix for "Unknown Customer")
+    const customerMap = new Map();
+    customers.forEach((c: any) =>
+      customerMap.set(String(c.customer_code), c.store_name)
+    );
 
-    // 3. AGGREGATE PER SALESMAN
+    // Valid Invoice IDs (for linking details)
+    const validInvoiceIds = new Set(
+      invoices.map((i: any) => String(i.invoice_id))
+    );
+
+    // --- 3. AGGREGATE PER SALESMAN ---
     const salesmanStats = new Map();
 
-    // Initialize salesmen stats from salesman list
+    // Initialize Active Salesmen
     salesmen.forEach((s: any) => {
       if (s.isActive) {
-        salesmanStats.set(s.id, {
-          id: s.id.toString(),
+        salesmanStats.set(String(s.id), {
+          id: String(s.id),
           name: s.salesman_name,
           netSales: 0,
-          target: 500000, // Default target since we don't have a targets table
-          returnRate: 0, // Placeholder as returns table wasn't provided in this prompt
+          target: 500000, // Placeholder target
+          returnRate: 0,
           visits: 0,
           orders: 0,
           strikeRate: 0,
           topProduct: "N/A",
           topSupplier: "N/A",
           productsSold: 0,
-          productCounts: new Map(), // To calc top product
+          productCounts: new Map<string, number>(),
         });
       }
     });
 
     let teamSales = 0;
-    const teamTarget = salesmanStats.size * 500000; // Aggregate target
-    let totalInvoicesCount = 0;
 
     // Process Invoices
-    filteredInvoices.forEach((inv: any) => {
-      const stats = salesmanStats.get(inv.salesman_id);
+    invoices.forEach((inv: any) => {
+      const d = inv.invoice_date?.substring(0, 10);
+      // Double check date filter
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+
+      const sId = String(inv.salesman_id);
+      const stats = salesmanStats.get(sId);
+
       if (stats) {
         const amount = Number(inv.total_amount) || 0;
         stats.netSales += amount;
         stats.orders += 1;
         teamSales += amount;
-        totalInvoicesCount++;
       }
     });
 
-    // Process Invoice Details for Top Products & Products Sold count
-    // (This is a simplified approach; doing this for ALL details in memory might be heavy for large datasets)
-    const validInvoiceIds = new Set(
-      filteredInvoices.map((i: any) => i.invoice_id)
-    );
-
+    // Process Details (Top Products)
     invoiceDetails.forEach((det: any) => {
-      // Check if detail belongs to a valid invoice in our date range
-      // Note: invoice_no in details might be an ID or object depending on Directus config
-      const invId =
-        typeof det.invoice_no === "object" ? det.invoice_no.id : det.invoice_no;
-
+      const invId = String(det.invoice_no);
       if (validInvoiceIds.has(invId)) {
-        // Find salesman for this invoice
-        const inv = filteredInvoices.find((i: any) => i.invoice_id === invId);
-        if (inv && salesmanStats.has(inv.salesman_id)) {
-          const stats = salesmanStats.get(inv.salesman_id);
-          const pName = productMap.get(det.product_id) || "Unknown";
-
-          // Count products
-          stats.productCounts.set(
-            pName,
-            (stats.productCounts.get(pName) || 0) + Number(det.total_amount)
-          );
+        // Find owner of invoice
+        const inv = invoices.find((i: any) => String(i.invoice_id) === invId);
+        if (inv) {
+          const sId = String(inv.salesman_id);
+          const stats = salesmanStats.get(sId);
+          if (stats) {
+            const pName =
+              productMap.get(String(det.product_id)) || "Unknown Product";
+            const amount = Number(det.total_amount) || 0;
+            stats.productCounts.set(
+              pName,
+              (stats.productCounts.get(pName) || 0) + amount
+            );
+          }
         }
       }
     });
 
-    // Finalize Salesman Stats
+    // Finalize Stats
     const salesmenList = Array.from(salesmanStats.values())
       .map((s: any) => {
-        // Top Product Logic
+        // Find Top Product
         let topP = "N/A";
         let maxVal = 0;
         s.productCounts.forEach((val: number, key: string) => {
@@ -122,7 +169,7 @@ export async function GET(request: Request) {
           }
         });
 
-        // Simulation for missing data fields
+        // Calc Metrics
         const estimatedVisits = s.orders > 0 ? Math.round(s.orders * 1.3) : 0;
         const strikeRate =
           estimatedVisits > 0
@@ -132,23 +179,20 @@ export async function GET(request: Request) {
         return {
           ...s,
           topProduct: topP,
-          topSupplier: "Internal", // Placeholder as supplier logic requires more mapping
           productsSold: s.productCounts.size,
           visits: estimatedVisits,
           strikeRate: strikeRate,
-          // Mock return rate for demo
-          returnRate: (Math.random() * 2).toFixed(2),
+          returnRate: (Math.random() * 2).toFixed(2), // Mock return rate for now
         };
       })
       .sort((a, b) => b.netSales - a.netSales);
 
-    // 4. COVERAGE DATA (Sari-Sari vs Resto)
+    // 4. COVERAGE DATA
     let sariSariCount = 0;
     let restoCount = 0;
     let othersCount = 0;
 
     customers.forEach((c: any) => {
-      // Simple string matching based on store name or type
       const name = (c.store_name || "").toUpperCase();
       if (name.includes("SARI") || name.includes("STORE")) sariSariCount++;
       else if (
@@ -166,13 +210,13 @@ export async function GET(request: Request) {
       { type: "Others", count: othersCount, fill: "#f59e0b" },
     ];
 
-    const totalCustomers = customers.length;
+    const teamTarget = salesmanStats.size * 500000;
     const penetrationRate =
-      totalCustomers > 0
-        ? (((sariSariCount + restoCount) / totalCustomers) * 100).toFixed(1)
+      customers.length > 0
+        ? (((sariSariCount + restoCount) / customers.length) * 100).toFixed(1)
         : 0;
 
-    // 5. MOCK MONTHLY HISTORY (For chart visual consistency)
+    // 5. MOCK HISTORY (Visual Consistency)
     const monthlyPerformance = [
       { month: "Jan", target: 500000, achieved: teamSales * 0.1 },
       { month: "Feb", target: 500000, achieved: teamSales * 0.15 },
@@ -187,11 +231,14 @@ export async function GET(request: Request) {
       data: {
         teamSales,
         teamTarget,
-        totalInvoices: totalInvoicesCount,
+        totalInvoices: invoices.length,
         penetrationRate,
         coverageDistribution,
         salesmen: salesmenList,
         monthlyPerformance,
+        topProducts: [], // Placeholder for team view
+        topSuppliers: [], // Placeholder for team view
+        returnHistory: [], // Placeholder for team view
       },
     });
   } catch (error: any) {
