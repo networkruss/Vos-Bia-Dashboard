@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Activity, // New icon for V2
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -33,19 +34,26 @@ const navItems: NavItem[] = [
     title: "Manager Dashboard",
     href: "/bi/manager",
     icon: TrendingUp,
-    role: ["manager", "executive"], // Add executive here
+    role: ["manager", "executive"],
+  },
+  // --- ADDED MANAGER V2 HERE ---
+  {
+    title: "Manager V2 (Test)",
+    href: "/bi/manager-v2",
+    icon: Activity,
+    role: ["manager", "executive"],
   },
   {
     title: "Supervisor Dashboard",
     href: "/bi/supervisor",
     icon: Users,
-    role: ["supervisor", "executive"], // Add executive here
+    role: ["supervisor", "executive"],
   },
   {
     title: "Salesman Dashboard",
     href: "/bi/encoder",
     icon: Package,
-    role: ["encoder", "executive"], // Add executive here
+    role: ["encoder", "executive"],
   },
 ];
 

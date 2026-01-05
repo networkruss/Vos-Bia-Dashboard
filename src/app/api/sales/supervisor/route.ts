@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8056";
+// Securely fetch URL from environment variables
+const DIRECTUS_URL = process.env.DIRECTUS_URL;
+
+if (!DIRECTUS_URL) {
+  throw new Error("Missing DIRECTUS_URL in .env.local");
+}
 
 // --- HELPERS ---
 async function fetchAll<T = any>(
@@ -8,15 +13,18 @@ async function fetchAll<T = any>(
   params: string = ""
 ): Promise<T[]> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 300000);
+  // 30s timeout is usually enough for filtered data.
+  // Reducing timeout prevents hanging processes.
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
     const res = await fetch(url, {
-      cache: "no-store",
+      cache: "no-store", // Ensure real-time data
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+
     if (!res.ok) {
       console.error(`Directus Error ${res.status} on ${url}`);
       return [];
@@ -31,6 +39,7 @@ async function fetchAll<T = any>(
 
 function normalizeDate(d: string | null) {
   if (!d) return null;
+  if (d.includes("-")) return d;
   if (d.includes("/")) {
     const parts = d.split("/");
     if (parts.length === 3) {
@@ -41,12 +50,10 @@ function normalizeDate(d: string | null) {
   return d;
 }
 
-// Generate array of dates between start and end
 function getDatesInRange(startDate: string, endDate: string) {
   const date = new Date(startDate);
   const end = new Date(endDate);
   const dates = [];
-
   while (date <= end) {
     dates.push(new Date(date).toISOString().split("T")[0]);
     date.setDate(date.getDate() + 1);
@@ -61,17 +68,19 @@ export async function GET(request: Request) {
     const toDate = normalizeDate(searchParams.get("toDate"));
     const salesmanId = searchParams.get("salesmanId");
 
-    // --- 1. OPTIMIZED FETCHING ---
+    // --- 1. OPTIMIZED FILTERS (Database Level) ---
+    // Only fetch records within the date range to reduce payload size
     let invoiceFilter = "";
     let detailsFilter = "";
     let returnFilter = "";
 
     if (fromDate && toDate) {
       invoiceFilter = `&filter[invoice_date][_between]=[${fromDate},${toDate} 23:59:59]`;
-      detailsFilter = `&filter[created_date][_between]=[${fromDate},${toDate} 23:59:59]`;
+      detailsFilter = `&filter[invoice_no][invoice_date][_between]=[${fromDate},${toDate} 23:59:59]`;
       returnFilter = `&filter[return_date][_between]=[${fromDate},${toDate} 23:59:59]`;
     }
 
+    // --- 2. PARALLEL FETCHING ---
     const [
       salesmen,
       invoices,
@@ -79,6 +88,7 @@ export async function GET(request: Request) {
       customers,
       products,
       suppliers,
+      storeTypes,
       pps,
       returns,
       returnDetails,
@@ -92,9 +102,10 @@ export async function GET(request: Request) {
         "sales_invoice_details",
         `&fields=invoice_no,product_id,total_amount,quantity${detailsFilter}`
       ),
-      fetchAll("customer", "&fields=customer_code,store_name"),
+      fetchAll("customer", "&fields=customer_code,store_name,store_type"),
       fetchAll("products", "&fields=product_id,product_name,parent_id"),
       fetchAll("suppliers", "&fields=id,supplier_name"),
+      fetchAll("store_type", "&fields=id,store_type"),
       fetchAll("product_per_supplier", "&fields=product_id,supplier_id"),
       fetchAll(
         "sales_return",
@@ -106,21 +117,21 @@ export async function GET(request: Request) {
       ),
     ]);
 
-    // --- 2. BUILD MAPS ---
+    // --- 3. FAST MAPPING (Hash Maps) ---
     const productMap = new Map();
     products.forEach((p: any) =>
       productMap.set(String(p.product_id), p.product_name)
-    );
-
-    const customerMap = new Map();
-    customers.forEach((c: any) =>
-      customerMap.set(String(c.customer_code), c.store_name)
     );
 
     const supplierMap = new Map<string, string>();
     suppliers.forEach((s: any) =>
       supplierMap.set(String(s.id), s.supplier_name)
     );
+
+    const storeTypeMap = new Map<string, string>();
+    storeTypes.forEach((st: any) => {
+      if (st.id) storeTypeMap.set(String(st.id), st.store_type);
+    });
 
     const productToSupplierMap = new Map<string, string>();
     pps.forEach((p: any) => {
@@ -138,13 +149,11 @@ export async function GET(request: Request) {
         if (prod?.parent_id)
           sId = productToSupplierMap.get(String(prod.parent_id));
       }
-      if (sId) {
-        const name = supplierMap.get(sId);
-        if (name && !name.includes("MEN2")) return name;
-      }
+      if (sId && supplierMap.has(sId)) return supplierMap.get(sId)!;
+
       const pName = (productMap.get(productId) || "").toUpperCase();
       if (pName.includes("CDO")) return "FOODSPHERE INC.";
-      if (pName.includes("SKINTEC")) return "SKINTEC";
+      if (pName.includes("PUREFOODS")) return "FOODSPHERE INC.";
       if (pName.includes("MAMA PINA")) return "MAMA PINA'S";
       return "Internal / Others";
     };
@@ -153,27 +162,24 @@ export async function GET(request: Request) {
       invoices.map((i: any) => String(i.invoice_id))
     );
 
-    // --- 3. AGGREGATE STATS ---
+    // --- 4. AGGREGATION ---
     const salesmanStats = new Map();
     const productSalesMap = new Map<string, number>();
     const supplierSalesMap = new Map<string, number>();
     const trendMap = new Map<string, number>();
 
-    // INITIALIZE ALL SALESMEN
+    // Initialize Salesmen
     salesmen.forEach((s: any) => {
       if (s.isActive) {
         salesmanStats.set(String(s.id), {
           id: String(s.id),
           name: s.salesman_name,
           netSales: 0,
-          target: 500000,
-          returnRate: 0,
-          visits: 0,
+          target: 0, // REAL DATA: 0 (No DB table)
+          returnCount: 0,
+          invoiceCount: 0,
+          visits: 0, // REAL DATA: 0 (No DB table)
           orders: 0,
-          strikeRate: 0,
-          topProduct: "N/A",
-          topSupplier: "N/A",
-          productsSold: 0,
           productCounts: new Map<string, number>(),
         });
       }
@@ -181,7 +187,7 @@ export async function GET(request: Request) {
 
     let teamSales = 0;
 
-    // A. Process Invoices
+    // Process Invoices
     invoices.forEach((inv: any) => {
       const d = inv.invoice_date?.substring(0, 10);
       if (fromDate && d < fromDate) return;
@@ -190,29 +196,26 @@ export async function GET(request: Request) {
       const sId = String(inv.salesman_id);
       const amount = Number(inv.total_amount) || 0;
 
-      // 1. Update Individual Stats (Always)
       const stats = salesmanStats.get(sId);
       if (stats) {
         stats.netSales += amount;
         stats.orders += 1;
+        stats.invoiceCount += 1;
       }
 
-      // 2. Update Dashboard Metrics (Based on Filter)
       const isIncluded =
         !salesmanId || salesmanId === "all" || salesmanId === sId;
-
       if (isIncluded) {
         teamSales += amount;
         trendMap.set(d, (trendMap.get(d) || 0) + amount);
       }
     });
 
-    // B. Process Details
+    // Process Details
     invoiceDetails.forEach((det: any) => {
       const invId = String(det.invoice_no);
       if (validInvoiceIds.has(invId)) {
         const inv = invoices.find((i: any) => String(i.invoice_id) === invId);
-
         if (inv) {
           const sId = String(inv.salesman_id);
           const amount = Number(det.total_amount) || 0;
@@ -220,7 +223,6 @@ export async function GET(request: Request) {
           const pName = productMap.get(pId) || `Product ${pId}`;
           const sName = getSupplierName(pId);
 
-          // 1. Individual Stats
           const stats = salesmanStats.get(sId);
           if (stats) {
             stats.productCounts.set(
@@ -229,7 +231,6 @@ export async function GET(request: Request) {
             );
           }
 
-          // 2. Dashboard Metrics (Filtered)
           const isIncluded =
             !salesmanId || salesmanId === "all" || salesmanId === sId;
           if (isIncluded) {
@@ -246,17 +247,18 @@ export async function GET(request: Request) {
       }
     });
 
-    // C. Process Returns
+    // Process Returns
     const returnHistoryList: any[] = [];
     const validReturnIds = new Set();
 
     returns.forEach((r: any) => {
       const sId = String(r.salesman_id);
+      const stats = salesmanStats.get(sId);
+      if (stats) stats.returnCount += 1;
+
       const isIncluded =
         !salesmanId || salesmanId === "all" || salesmanId === sId;
-      if (isIncluded) {
-        validReturnIds.add(String(r.return_number));
-      }
+      if (isIncluded) validReturnIds.add(String(r.return_number));
     });
 
     returnDetails.forEach((ret: any) => {
@@ -273,8 +275,7 @@ export async function GET(request: Request) {
       }
     });
 
-    // --- 4. FINALIZE ---
-
+    // --- FINALIZE METRICS ---
     const topProducts = Array.from(productSalesMap.entries())
       .map(([name, sales]) => ({ name, sales }))
       .sort((a, b) => b.sales - a.sales)
@@ -284,30 +285,6 @@ export async function GET(request: Request) {
       .map(([name, sales]) => ({ name, sales }))
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 10);
-
-    const groupedReturns = new Map<
-      string,
-      { quantity: number; reason: string }
-    >();
-    returnHistoryList.forEach((r) => {
-      const existing = groupedReturns.get(r.product);
-      if (existing) {
-        existing.quantity += r.quantity;
-      } else {
-        groupedReturns.set(r.product, {
-          quantity: r.quantity,
-          reason: r.reason,
-        });
-      }
-    });
-    const finalReturnHistory = Array.from(groupedReturns.entries())
-      .map(([product, details]) => ({
-        product,
-        quantity: details.quantity,
-        reason: details.reason,
-      }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 50);
 
     const salesmenList = Array.from(salesmanStats.values())
       .map((s: any) => {
@@ -319,40 +296,33 @@ export async function GET(request: Request) {
             topP = key;
           }
         });
-        const estimatedVisits = s.orders > 0 ? Math.round(s.orders * 1.3) : 0;
+
+        // REAL DATA: Visits = 0 -> Strike Rate = 0
         const strikeRate =
-          estimatedVisits > 0
-            ? Math.round((s.orders / estimatedVisits) * 100)
-            : 0;
+          s.visits > 0 ? Math.round((s.orders / s.visits) * 100) : 0;
+
+        // REAL DATA: Returns / Invoices
+        const realReturnRate =
+          s.invoiceCount > 0
+            ? ((s.returnCount / s.invoiceCount) * 100).toFixed(2)
+            : "0.00";
 
         return {
           ...s,
           topProduct: topP,
           topSupplier: "Internal",
           productsSold: s.productCounts.size,
-          visits: estimatedVisits,
-          strikeRate: strikeRate,
-          returnRate: (Math.random() * 2).toFixed(2),
+          visits: 0,
+          strikeRate: 0,
+          returnRate: realReturnRate,
         };
       })
       .sort((a, b) => b.netSales - a.netSales);
 
-    // Target Calculation
-    let teamTarget = 0;
-    if (!salesmanId || salesmanId === "all") {
-      teamTarget = salesmenList.length * 500000;
-    } else {
-      teamTarget = 500000;
-    }
-
-    // --- 5. DYNAMIC CHART DATA (FIXED) ---
-    // Generate ALL dates in the range, not just ones with sales
+    // Chart Data
     let dynamicPerformance: any[] = [];
-
     if (fromDate && toDate) {
       const allDates = getDatesInRange(fromDate, toDate);
-      const dailyTarget = Math.round(teamTarget / allDates.length);
-
       dynamicPerformance = allDates.map((dateStr) => {
         const d = new Date(dateStr);
         return {
@@ -360,41 +330,71 @@ export async function GET(request: Request) {
             month: "short",
             day: "numeric",
           }),
-          target: dailyTarget,
-          achieved: trendMap.get(dateStr) || 0, // Default to 0 if no sales
+          target: 0,
+          achieved: trendMap.get(dateStr) || 0,
         };
       });
     }
 
-    let sariSariCount = 0;
-    let restoCount = 0;
-    let othersCount = 0;
+    // Store Coverage (Using store_type table)
+    const coverageMap = new Map<string, number>();
+    let totalAssigned = 0;
+
     customers.forEach((c: any) => {
-      const name = (c.store_name || "").toUpperCase();
-      if (name.includes("SARI") || name.includes("STORE")) sariSariCount++;
-      else if (name.includes("RESTO")) restoCount++;
-      else othersCount++;
+      let typeName = "Uncategorized";
+      if (c.store_type) {
+        const typeId =
+          typeof c.store_type === "object" ? c.store_type.id : c.store_type;
+        if (storeTypeMap.has(String(typeId))) {
+          typeName = storeTypeMap.get(String(typeId))!;
+        }
+      }
+      coverageMap.set(typeName, (coverageMap.get(typeName) || 0) + 1);
+      if (typeName !== "Uncategorized") totalAssigned++;
     });
-    const coverageDistribution = [
-      { type: "Sari-Sari Store", count: sariSariCount, fill: "#3b82f6" },
-      { type: "Restaurant", count: restoCount, fill: "#10b981" },
-      { type: "Others", count: othersCount, fill: "#f59e0b" },
-    ];
+
+    const coverageDistribution = Array.from(coverageMap.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+
     const penetrationRate =
       customers.length > 0
-        ? (((sariSariCount + restoCount) / customers.length) * 100).toFixed(1)
+        ? ((totalAssigned / customers.length) * 100).toFixed(1)
         : 0;
+
+    // Group Returns
+    const groupedReturns = new Map<
+      string,
+      { quantity: number; reason: string }
+    >();
+    returnHistoryList.forEach((r) => {
+      const existing = groupedReturns.get(r.product);
+      if (existing) existing.quantity += r.quantity;
+      else
+        groupedReturns.set(r.product, {
+          quantity: r.quantity,
+          reason: r.reason,
+        });
+    });
+    const finalReturnHistory = Array.from(groupedReturns.entries())
+      .map(([product, details]) => ({
+        product,
+        quantity: details.quantity,
+        reason: details.reason,
+      }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 50);
 
     return NextResponse.json({
       success: true,
       data: {
         teamSales,
-        teamTarget,
+        teamTarget: 0,
         totalInvoices: invoices.length,
         penetrationRate,
         coverageDistribution,
         salesmen: salesmenList,
-        monthlyPerformance: dynamicPerformance, // NOW FULL RANGE
+        monthlyPerformance: dynamicPerformance,
         topProducts,
         topSuppliers,
         returnHistory: finalReturnHistory,
