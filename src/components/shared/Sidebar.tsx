@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Activity, // New icon for V2
+  Activity,
+  Presentation, // Added for Ad-Hoc Analysis
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -30,13 +31,19 @@ const navItems: NavItem[] = [
     icon: LayoutDashboard,
     role: ["executive"],
   },
+  // --- ADDED EXECUTIVE V2 (Ad-Hoc) HERE ---
+  {
+    title: "Executive Dashboard V2 (test)",
+    href: "/bi/executive-v2",
+    icon: Presentation,
+    role: ["executive"],
+  },
   {
     title: "Manager Dashboard",
     href: "/bi/manager",
     icon: TrendingUp,
     role: ["manager", "executive"],
   },
-  // --- ADDED MANAGER V2 HERE ---
   {
     title: "Manager V2 (Test)",
     href: "/bi/manager-v2",
