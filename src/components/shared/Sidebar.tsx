@@ -1,4 +1,3 @@
-// src/components/shared/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,13 +8,12 @@ import {
   Users,
   TrendingUp,
   Package,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
-  Activity,
-  Presentation, // Added for Ad-Hoc Analysis
+  Presentation,
+  PanelLeft,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
 
 interface NavItem {
   title: string;
@@ -31,7 +29,6 @@ const navItems: NavItem[] = [
     icon: LayoutDashboard,
     role: ["executive"],
   },
-  // --- ADDED EXECUTIVE V2 (Ad-Hoc) HERE ---
   {
     title: "Executive Dashboard V2 (test)",
     href: "/bi/executive-v2",
@@ -44,7 +41,6 @@ const navItems: NavItem[] = [
     icon: TrendingUp,
     role: ["manager", "executive"],
   },
-
   {
     title: "Supervisor Dashboard",
     href: "/bi/supervisor",
@@ -59,19 +55,28 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Sidebar() {
+// Define props to accept state from the parent layout
+interface SidebarProps {
+  collapsed: boolean;
+  setCollapsed: (collapsed: boolean) => void;
+}
+
+export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
   const [isCOO, setIsCOO] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Force system theme logic
+  const { setTheme } = useTheme();
+  useEffect(() => {
+    setTheme("system");
+  }, [setTheme]);
+
   useEffect(() => {
     const t = setTimeout(() => {
       setMounted(true);
-
-      // Get user role from localStorage (only on client side)
       if (typeof window !== "undefined") {
         const userStr = localStorage.getItem("user");
         if (userStr) {
@@ -96,27 +101,24 @@ export function Sidebar() {
     router.push("/");
   };
 
-  // Filter nav items based on user role
   const filteredNavItems = navItems.filter((item) => {
-    // If no role specified, show to everyone
     if (!item.role) return true;
-
-    // Show item if user's role is in the allowed roles
     return item.role.includes(userRole);
   });
 
-  // Don't render until mounted (prevents hydration issues)
   if (!mounted) {
     return (
-      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-white">
-        <div className="flex h-16 items-center border-b px-4">
+      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-white dark:bg-gray-900 dark:border-gray-800">
+        <div className="flex h-16 items-center justify-between border-b px-4 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold">
               V
             </div>
             <div>
-              <h1 className="text-lg font-bold">VOS BI</h1>
-              <p className="text-xs text-muted-foreground">Sales Dashboard</p>
+              <h1 className="text-lg font-bold dark:text-gray-100">VOS BI</h1>
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
+                Sales Dashboard
+              </p>
             </div>
           </div>
         </div>
@@ -124,7 +126,7 @@ export function Sidebar() {
     );
   }
 
-  // Don't render sidebar on login page
+  // Hide sidebar on login page
   if (pathname === "/") {
     return null;
   }
@@ -132,33 +134,47 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r bg-white transition-all duration-300",
+        "fixed left-0 top-0 z-40 h-screen border-r bg-white transition-all duration-300 dark:bg-gray-900 dark:border-gray-800",
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo */}
-      <div className="flex h-16 items-center border-b px-4">
+      {/* HEADER: Logo + Collapse Button */}
+      <div
+        className={cn(
+          "flex h-16 items-center border-b dark:border-gray-800",
+          collapsed ? "justify-center px-2" : "justify-between px-4"
+        )}
+      >
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-600 text-white font-bold">
               V
             </div>
-            <div>
-              <h1 className="text-lg font-bold">VOS BIA</h1>
-              <p className="text-xs text-muted-foreground">
+            <div className="whitespace-nowrap">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                VOS BIA
+              </h1>
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
                 {isCOO ? "Executive Access" : "Sales Dashboard"}
               </p>
             </div>
           </div>
         )}
-        {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold mx-auto">
-            V
-          </div>
-        )}
+
+        {/* COLLAPSE BUTTON - Beside the text when expanded */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={cn(
+            "flex items-center justify-center rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors",
+            collapsed && "w-full" // Centers the icon when sidebar is collapsed
+          )}
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          <PanelLeft className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Navigation */}
+      {/* NAVIGATION */}
       <nav className="flex-1 space-y-1 p-2">
         {filteredNavItems.map((item) => {
           const Icon = item.icon;
@@ -169,9 +185,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-gray-100",
-                isActive && "bg-blue-50 text-blue-600 font-medium",
-                !isActive && "text-gray-700",
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all",
+                isActive
+                  ? "bg-blue-50 text-blue-600 font-medium dark:bg-blue-900/20 dark:text-blue-400"
+                  : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white",
                 collapsed && "justify-center"
               )}
               title={collapsed ? item.title : undefined}
@@ -183,37 +200,18 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom Section */}
-      <div className="border-t p-2 space-y-1">
-        {/* Logout Button */}
+      {/* FOOTER: Logout Only */}
+      <div className="border-t p-2 space-y-1 dark:border-gray-800">
         <button
           onClick={handleLogout}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition-all hover:bg-red-50",
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition-all hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20",
             collapsed && "justify-center"
           )}
           title={collapsed ? "Logout" : undefined}
         >
           <LogOut className="h-5 w-5" />
           {!collapsed && <span>Logout</span>}
-        </button>
-
-        {/* Collapse Button */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 transition-all hover:bg-gray-100",
-            collapsed && "justify-center"
-          )}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-5 w-5" />
-          ) : (
-            <>
-              <ChevronLeft className="h-5 w-5" />
-              <span>Collapse</span>
-            </>
-          )}
         </button>
       </div>
     </aside>

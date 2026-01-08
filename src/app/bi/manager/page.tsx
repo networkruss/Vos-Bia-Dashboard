@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Area,
   AreaChart,
@@ -82,7 +82,6 @@ interface DashboardData {
   };
 }
 
-// --- UPDATED: Added "Internal" to the list ---
 const DIVISIONS = [
   "Overview",
   "Dry Goods",
@@ -93,7 +92,7 @@ const DIVISIONS = [
 ];
 
 const ITEMS_PER_PAGE = 5;
-const LIST_ITEMS_PER_PAGE = 5; // For Products & Customers lists
+const LIST_ITEMS_PER_PAGE = 5;
 
 const CHART_COLORS = [
   "#2563eb",
@@ -115,12 +114,10 @@ export default function ManagerDashboard() {
   const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Pagination States
   const [supplierPage, setSupplierPage] = useState(1);
   const [productPage, setProductPage] = useState(1);
   const [customerPage, setCustomerPage] = useState(1);
 
-  // Date Logic
   const [timePeriod, setTimePeriod] = useState("thisMonth");
   const [date, setDate] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -161,7 +158,6 @@ export default function ManagerDashboard() {
     const fetchData = async () => {
       setLoading(true);
       setErrorMsg(null);
-      // Reset paginations on new filter
       setSupplierPage(1);
       setProductPage(1);
       setCustomerPage(1);
@@ -173,7 +169,6 @@ export default function ManagerDashboard() {
           activeTab: activeTab,
         });
 
-        // --- UPDATED: Fetch from the correct endpoint (/api/sales/manager) ---
         const res = await fetch(`/api/sales/manager?${query.toString()}`);
 
         if (!res.ok) {
@@ -210,7 +205,6 @@ export default function ManagerDashboard() {
       minimumFractionDigits: 0,
     }).format(val);
 
-  // --- PAGINATION HELPERS ---
   const totalSuppliers = data?.supplierBreakdown?.length || 0;
   const totalSupplierPages = Math.ceil(totalSuppliers / ITEMS_PER_PAGE);
   const paginatedSuppliers =
@@ -244,38 +238,45 @@ export default function ManagerDashboard() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 min-h-screen relative">
+    // UPDATED: Changed 'max-w-7xl' to 'w-full' to allow full expansion
+    // Added 'dark:bg-gray-900' for better dark mode background control
+    <div className="p-6 w-full mx-auto space-y-6 min-h-screen relative dark:bg-gray-900 transition-all duration-300">
       {loading && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 backdrop-blur-[1px]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black dark:border-white"></div>
         </div>
       )}
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
           Inventory & Sales Manager
         </h1>
-        <p className="text-gray-500">
+        <p className="text-gray-500 dark:text-gray-400">
           Tracking stock velocity, returns, and sales performance
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white p-4 rounded-xl border shadow-sm transition-all duration-300">
+      {/* FILTERS */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all duration-300">
         <div
           className={
             timePeriod === "custom" ? "md:col-span-3" : "md:col-span-6"
           }
         >
-          <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">
+          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
             Division
           </label>
           <Select value={activeTab} onValueChange={(val) => setActiveTab(val)}>
-            <SelectTrigger className="w-full h-12">
+            <SelectTrigger className="w-full h-12 dark:bg-gray-900 dark:border-gray-700 dark:text-white">
               <SelectValue placeholder="Select Division" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
               {DIVISIONS.map((div) => (
-                <SelectItem key={div} value={div}>
+                <SelectItem
+                  key={div}
+                  value={div}
+                  className="dark:text-gray-200 dark:focus:bg-gray-700"
+                >
                   {div}
                 </SelectItem>
               ))}
@@ -288,29 +289,37 @@ export default function ManagerDashboard() {
             timePeriod === "custom" ? "md:col-span-3" : "md:col-span-6"
           }
         >
-          <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">
+          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
             Time Period
           </label>
           <Select value={timePeriod} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-full h-12">
+            <SelectTrigger className="w-full h-12 dark:bg-gray-900 dark:border-gray-700 dark:text-white">
               <SelectValue placeholder="Select Period" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="thisWeek">This Week</SelectItem>
-              <SelectItem value="thisMonth">This Month</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
+            <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
+              <SelectItem value="today" className="dark:text-gray-200">
+                Today
+              </SelectItem>
+              <SelectItem value="thisWeek" className="dark:text-gray-200">
+                This Week
+              </SelectItem>
+              <SelectItem value="thisMonth" className="dark:text-gray-200">
+                This Month
+              </SelectItem>
+              <SelectItem value="custom" className="dark:text-gray-200">
+                Custom Range
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {timePeriod === "custom" && (
           <div className="md:col-span-6 animate-in fade-in slide-in-from-left-4 duration-300">
-            <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">
+            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
               Custom Date Range
             </label>
             <DatePickerWithRange
-              className="w-full"
+              className="w-full dark:bg-gray-900 dark:border-gray-700 dark:text-white"
               date={date}
               setDate={handleDateSelect}
             />
@@ -319,30 +328,32 @@ export default function ManagerDashboard() {
       </div>
 
       {errorMsg ? (
-        <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-100">
+        <div className="p-8 text-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-900">
           <p className="font-semibold">Error Loading Dashboard</p>{" "}
           <p className="text-sm">{errorMsg}</p>
         </div>
       ) : !data ? (
-        <div className="flex items-center justify-center h-64 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-          <span className="text-gray-400">Loading metrics...</span>
+        <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+          <span className="text-gray-400 dark:text-gray-500">
+            Loading metrics...
+          </span>
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 mt-6">
           {/* KPI CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="shadow-sm border-emerald-100">
+            <Card className="shadow-sm border-emerald-100 dark:border-emerald-900 dark:bg-gray-800">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
-                    <div className="p-2 bg-emerald-100 rounded-lg">
-                      <PackageCheck className="text-emerald-600 h-5 w-5" />
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg">
+                      <PackageCheck className="text-emerald-600 dark:text-emerald-400 h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500">
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                         Good Stock Velocity
                       </p>
-                      <h3 className="text-2xl font-bold text-gray-900">
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
                         {data.goodStock.velocityRate}%
                       </h3>
                     </div>
@@ -351,29 +362,29 @@ export default function ManagerDashboard() {
                     className={`px-2 py-1 text-xs font-bold rounded ${
                       data.goodStock.status.includes("Healthy") ||
                       data.goodStock.status.includes("Fast")
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-amber-100 text-amber-700"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
                     }`}
                   >
                     {data.goodStock.status}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
+                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 mb-4">
                   <div
-                    className="bg-gray-900 h-2 rounded-full"
+                    className="bg-gray-900 dark:bg-white h-2 rounded-full"
                     style={{ width: `${data.goodStock.velocityRate}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-sm text-gray-600">
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                   <span>
                     Outflow:{" "}
-                    <strong>
+                    <strong className="dark:text-gray-200">
                       {data.goodStock.totalOutflow.toLocaleString()}
                     </strong>
                   </span>
                   <span>
                     Total Moved:{" "}
-                    <strong>
+                    <strong className="dark:text-gray-200">
                       {data.goodStock.totalInflow.toLocaleString()}
                     </strong>
                   </span>
@@ -381,18 +392,18 @@ export default function ManagerDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-red-100">
+            <Card className="shadow-sm border-red-100 dark:border-red-900 dark:bg-gray-800">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2">
-                    <div className="p-2 bg-red-100 rounded-lg">
-                      <AlertCircle className="text-red-600 h-5 w-5" />
+                    <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-lg">
+                      <AlertCircle className="text-red-600 dark:text-red-400 h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500">
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                         Bad Stock Inflow
                       </p>
-                      <h3 className="text-2xl font-bold text-gray-900">
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
                         {data.badStock.accumulated.toLocaleString()}
                       </h3>
                     </div>
@@ -400,29 +411,29 @@ export default function ManagerDashboard() {
                   <span
                     className={`px-2 py-1 text-xs font-bold rounded ${
                       data.badStock.status === "Normal"
-                        ? "bg-gray-100 text-gray-700"
-                        : "bg-red-100 text-red-700"
+                        ? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"
                     }`}
                   >
                     {data.badStock.status}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
+                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 mb-4">
                   <div
                     className="bg-red-600 h-2 rounded-full"
                     style={{ width: `${calculateBadStockRate()}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-sm text-gray-600">
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                   <span>
                     Accumulated:{" "}
-                    <strong>
+                    <strong className="dark:text-gray-200">
                       {data.badStock.accumulated.toLocaleString()}
                     </strong>
                   </span>
                   <span>
                     Returns Volume:{" "}
-                    <strong className="text-red-600">
+                    <strong className="text-red-600 dark:text-red-400">
                       +{data.badStock.totalInflow.toLocaleString()}
                     </strong>
                   </span>
@@ -432,11 +443,11 @@ export default function ManagerDashboard() {
           </div>
 
           {/* TREND CHART */}
-          <Card className="shadow-sm">
+          <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-600" /> Stock Movement
-                Trend (Historical)
+              <CardTitle className="flex items-center gap-2 dark:text-white">
+                <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />{" "}
+                Stock Movement Trend (Historical)
               </CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
@@ -467,6 +478,7 @@ export default function ManagerDashboard() {
                     strokeDasharray="3 3"
                     vertical={false}
                     stroke="#f0f0f0"
+                    className="dark:stroke-gray-700"
                   />
                   <XAxis
                     dataKey="date"
@@ -482,7 +494,14 @@ export default function ManagerDashboard() {
                     tick={{ fontSize: 12, fill: "#888" }}
                     domain={[0, "auto"]}
                   />
-                  <Tooltip />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1f2937",
+                      border: "none",
+                      color: "#fff",
+                    }}
+                    itemStyle={{ color: "#fff" }}
+                  />
                   <Legend verticalAlign="top" height={36} />
                   <Area
                     type="monotone"
@@ -492,6 +511,7 @@ export default function ManagerDashboard() {
                     fill="url(#fillGood)"
                     strokeWidth={2}
                     stackId="a"
+                    className="dark:stroke-white dark:fill-white/20"
                   />
                   <Area
                     type="monotone"
@@ -508,12 +528,15 @@ export default function ManagerDashboard() {
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="flex flex-col shadow-sm">
+            <Card className="flex flex-col shadow-sm dark:bg-gray-800 dark:border-gray-700">
               <CardHeader className="items-center pb-0">
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="h-5 w-5 text-blue-600" /> Sales per Supplier
+                <CardTitle className="flex items-center gap-2 dark:text-white">
+                  <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />{" "}
+                  Sales per Supplier
                 </CardTitle>
-                <CardDescription>Top 10 Suppliers</CardDescription>
+                <CardDescription className="dark:text-gray-400">
+                  Top 10 Suppliers
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex-1 pb-0 min-h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -538,16 +561,18 @@ export default function ManagerDashboard() {
                     <Tooltip
                       formatter={(value: number) => formatPHP(value)}
                       contentStyle={{
+                        backgroundColor: "#1f2937",
                         borderRadius: "8px",
                         border: "none",
                         boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        color: "#fff",
                       }}
                     />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
-              <CardFooter className="flex-col gap-2 text-sm pt-4">
+              <CardFooter className="flex-col gap-2 text-sm pt-4 dark:text-gray-300">
                 <div className="flex items-center gap-2 leading-none font-medium">
                   {data.salesBySupplier.length > 0 ? (
                     <>Top Supplier: {data.salesBySupplier[0]?.name}</>
@@ -559,11 +584,11 @@ export default function ManagerDashboard() {
               </CardFooter>
             </Card>
 
-            <Card className="shadow-sm">
+            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" /> Sales per
-                  Salesman
+                <CardTitle className="flex items-center gap-2 dark:text-white">
+                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />{" "}
+                  Sales per Salesman
                 </CardTitle>
               </CardHeader>
               <CardContent className="h-[350px]">
@@ -577,23 +602,30 @@ export default function ManagerDashboard() {
                       strokeDasharray="3 3"
                       horizontal={false}
                       stroke="#f0f0f0"
+                      className="dark:stroke-gray-700"
                     />
                     <XAxis type="number" hide />
                     <YAxis
                       dataKey="name"
                       type="category"
                       width={100}
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: "#888" }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip
                       cursor={{ fill: "transparent" }}
                       formatter={(value: number) => formatPHP(value)}
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "none",
+                        color: "#fff",
+                      }}
                     />
                     <Bar
                       dataKey="value"
-                      fill="#000000"
+                      fill="#000000" // Fallback
+                      className="fill-black dark:fill-white" // CSS Class for dark mode switch
                       radius={[0, 0, 0, 0]}
                       barSize={20}
                     />
@@ -604,10 +636,10 @@ export default function ManagerDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* TOP PRODUCTS (PAGINATED) */}
-            <Card className="shadow-sm">
+            {/* TOP PRODUCTS */}
+            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 dark:text-white">
                   <ShoppingBag className="h-5 w-5 text-orange-500" /> Top
                   Products
                 </CardTitle>
@@ -615,22 +647,22 @@ export default function ManagerDashboard() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-8 w-8 dark:hover:bg-gray-700"
                     onClick={() => setProductPage((p) => Math.max(1, p - 1))}
                     disabled={productPage === 1}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4 dark:text-white" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-8 w-8 dark:hover:bg-gray-700"
                     onClick={() =>
                       setProductPage((p) => Math.min(totalProductPages, p + 1))
                     }
                     disabled={productPage === totalProductPages}
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4 dark:text-white" />
                   </Button>
                 </div>
               </CardHeader>
@@ -639,13 +671,13 @@ export default function ManagerDashboard() {
                   {paginatedProducts.map((item: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between text-sm border-b border-gray-50 pb-2 last:border-0"
+                      className="flex justify-between text-sm border-b border-gray-50 dark:border-gray-700 pb-2 last:border-0"
                     >
-                      <span className="text-gray-700 w-2/3 truncate">
+                      <span className="text-gray-700 dark:text-gray-300 w-2/3 truncate">
                         {(productPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}.{" "}
                         {item.name}
                       </span>
-                      <span className="font-bold text-gray-900">
+                      <span className="font-bold text-gray-900 dark:text-white">
                         {formatPHP(item.value)}
                       </span>
                     </div>
@@ -654,26 +686,26 @@ export default function ManagerDashboard() {
               </CardContent>
             </Card>
 
-            {/* TOP CUSTOMERS (PAGINATED) */}
-            <Card className="shadow-sm">
+            {/* TOP CUSTOMERS */}
+            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 dark:text-white">
                   <Award className="h-5 w-5 text-yellow-500" /> Top Customers
                 </CardTitle>
                 <div className="flex gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-8 w-8 dark:hover:bg-gray-700"
                     onClick={() => setCustomerPage((p) => Math.max(1, p - 1))}
                     disabled={customerPage === 1}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4 dark:text-white" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8"
+                    className="h-8 w-8 dark:hover:bg-gray-700"
                     onClick={() =>
                       setCustomerPage((p) =>
                         Math.min(totalCustomerPages, p + 1)
@@ -681,7 +713,7 @@ export default function ManagerDashboard() {
                     }
                     disabled={customerPage === totalCustomerPages}
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4 dark:text-white" />
                   </Button>
                 </div>
               </CardHeader>
@@ -690,13 +722,13 @@ export default function ManagerDashboard() {
                   {paginatedCustomers.map((item: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between text-sm border-b border-gray-50 pb-2 last:border-0"
+                      className="flex justify-between text-sm border-b border-gray-50 dark:border-gray-700 pb-2 last:border-0"
                     >
-                      <span className="text-gray-700 w-2/3 truncate">
+                      <span className="text-gray-700 dark:text-gray-300 w-2/3 truncate">
                         {(customerPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}.{" "}
                         {item.name}
                       </span>
-                      <span className="font-bold text-gray-900">
+                      <span className="font-bold text-gray-900 dark:text-white">
                         {formatPHP(item.value)}
                       </span>
                     </div>
@@ -706,10 +738,12 @@ export default function ManagerDashboard() {
             </Card>
           </div>
 
-          <Card className="shadow-sm">
-            <CardHeader className="bg-gray-50 border-b border-gray-100 flex flex-row items-center justify-between">
-              <CardTitle>Detailed Supplier Breakdown</CardTitle>
-              <span className="text-xs text-gray-500 font-normal">
+          <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <CardHeader className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700 flex flex-row items-center justify-between">
+              <CardTitle className="dark:text-white">
+                Detailed Supplier Breakdown
+              </CardTitle>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">
                 Showing{" "}
                 {Math.min(
                   (supplierPage - 1) * ITEMS_PER_PAGE + 1,
@@ -723,42 +757,42 @@ export default function ManagerDashboard() {
               {paginatedSuppliers.map((supplier: any) => (
                 <div
                   key={supplier.id}
-                  className="border-b border-gray-100 last:border-0"
+                  className="border-b border-gray-100 dark:border-gray-700 last:border-0"
                 >
                   <button
                     onClick={() => toggleSupplier(supplier.id)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    <span className="font-medium text-gray-800">
+                    <span className="font-medium text-gray-800 dark:text-gray-200">
                       {supplier.name}
                     </span>
                     <div className="flex items-center gap-4">
-                      <span className="font-bold text-gray-900">
+                      <span className="font-bold text-gray-900 dark:text-white">
                         {formatPHP(supplier.totalSales)}
                       </span>
                       {expandedSupplier === supplier.id ? (
-                        <ChevronDown className="h-4 w-4" />
+                        <ChevronDown className="h-4 w-4 dark:text-gray-400" />
                       ) : (
-                        <ChevronRight className="h-4 w-4" />
+                        <ChevronRight className="h-4 w-4 dark:text-gray-400" />
                       )}
                     </div>
                   </button>
                   {expandedSupplier === supplier.id && (
-                    <div className="bg-gray-50/50 p-4">
+                    <div className="bg-gray-50/50 dark:bg-gray-900/50 p-4">
                       <table className="w-full text-sm">
                         <tbody>
                           {supplier.salesmen.map((rep: any, idx: number) => (
                             <tr
                               key={idx}
-                              className="border-b border-gray-100 last:border-0"
+                              className="border-b border-gray-100 dark:border-gray-700 last:border-0"
                             >
-                              <td className="py-2 text-gray-600 pl-4">
+                              <td className="py-2 text-gray-600 dark:text-gray-400 pl-4">
                                 {rep.name}
                               </td>
-                              <td className="py-2 text-right font-medium text-gray-900">
+                              <td className="py-2 text-right font-medium text-gray-900 dark:text-gray-200">
                                 {formatPHP(rep.amount)}
                               </td>
-                              <td className="py-2 text-right text-gray-500 pr-4">
+                              <td className="py-2 text-right text-gray-500 dark:text-gray-500 pr-4">
                                 {rep.percent}%
                               </td>
                             </tr>
@@ -770,17 +804,17 @@ export default function ManagerDashboard() {
                 </div>
               ))}
               {totalSuppliers > ITEMS_PER_PAGE && (
-                <div className="p-4 flex items-center justify-between border-t bg-gray-50">
+                <div className="p-4 flex items-center justify-between border-t bg-gray-50 dark:bg-gray-900/50 dark:border-gray-700">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setSupplierPage((p) => p - 1)}
                     disabled={supplierPage === 1}
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 dark:bg-gray-800 dark:text-white dark:border-gray-700"
                   >
                     <ChevronLeft className="h-4 w-4" /> Prev
                   </Button>
-                  <span className="text-sm text-gray-600 font-medium">
+                  <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
                     Page {supplierPage} of {totalSupplierPages}
                   </span>
                   <Button
@@ -788,7 +822,7 @@ export default function ManagerDashboard() {
                     size="sm"
                     onClick={() => setSupplierPage((p) => p + 1)}
                     disabled={supplierPage === totalSupplierPages}
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 dark:bg-gray-800 dark:text-white dark:border-gray-700"
                   >
                     Next <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -798,15 +832,15 @@ export default function ManagerDashboard() {
           </Card>
 
           {activeTab === "Overview" && data.divisionBreakdown && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
-              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mt-8">
+              <div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+                <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <LayoutGrid className="h-5 w-5 text-blue-600" /> Division
                   Overview Summary
                 </h3>
               </div>
               <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-600 font-medium">
+                <thead className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 font-medium">
                   <tr>
                     <th className="py-3 px-6">Division</th>
                     <th className="py-3 px-6 text-center">Velocity</th>
@@ -815,27 +849,30 @@ export default function ManagerDashboard() {
                     <th className="py-3 px-6 text-center">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {data.divisionBreakdown.map((div: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="py-3 px-6 font-medium text-gray-900">
+                    <tr
+                      key={idx}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="py-3 px-6 font-medium text-gray-900 dark:text-gray-200">
                         {div.division}
                       </td>
-                      <td className="py-3 px-6 text-center font-bold text-blue-600">
+                      <td className="py-3 px-6 text-center font-bold text-blue-600 dark:text-blue-400">
                         {div.goodStock.velocityRate}%
                       </td>
-                      <td className="py-3 px-6 text-right text-gray-700">
+                      <td className="py-3 px-6 text-right text-gray-700 dark:text-gray-300">
                         {div.goodStock.totalOutflow.toLocaleString()}
                       </td>
-                      <td className="py-3 px-6 text-right text-red-600">
+                      <td className="py-3 px-6 text-right text-red-600 dark:text-red-400">
                         {div.badStock.accumulated.toLocaleString()}
                       </td>
                       <td className="py-3 px-6 text-center">
                         <span
                           className={`px-2 py-1 rounded text-xs font-bold ${
                             div.goodStock.status === "Healthy"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400"
+                              : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"
                           }`}
                         >
                           {div.goodStock.status}

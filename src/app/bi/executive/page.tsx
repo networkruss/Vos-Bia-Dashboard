@@ -9,7 +9,7 @@ import { FilterBar } from "@/components/dashboard/FilterBar";
 import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 import { SalesTrendChart } from "@/components/modules/bi/SalesTrendChart";
 import { DivisionSalesChart } from "@/components/modules/bi/DivisionSalesChart";
-import { TargetAchievementChart } from "@/components/modules/bi/TargetAchievementChart"; // Ensure this file exists
+import { TargetAchievementChart } from "@/components/modules/bi/TargetAchievementChart";
 import { SupplierSalesChart } from "@/components/dashboard/SupplierSalesChart";
 import { SupplierHeatmap } from "@/components/dashboard/SupplierHeatmap";
 
@@ -32,7 +32,6 @@ export default function ExecutiveDashboard() {
   }, []);
 
   useEffect(() => {
-    // Wait for filters to have values (FilterBar sets default thisWeek/thisMonth)
     if (!filters.fromDate || !filters.toDate) return;
 
     const fetchData = async () => {
@@ -84,26 +83,29 @@ export default function ExecutiveDashboard() {
       : dashboardData?.kpi;
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto space-y-6 min-h-screen relative">
-      {/* Loading Overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
-        </div>
-      )}
-
-      <h1 className="text-3xl font-bold">Executive Dashboard</h1>
+    <div className="p-6 w-full mx-auto space-y-6 min-h-screen relative dark:bg-gray-900 transition-colors duration-300">
+      <h1 className="text-3xl font-bold dark:text-white">
+        Executive Dashboard
+      </h1>
 
       {/* Filter Bar */}
       <FilterBar onFilterChange={onFilterUpdate} branches={[]} />
 
-      {error ? (
-        <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-100">
+      {/* Main Content Area */}
+      {loading ? (
+        <div className="flex h-[60vh] w-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/50">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-300 border-t-black dark:border-gray-600 dark:border-t-white"></div>
+          <p className="text-sm font-medium text-gray-500 animate-pulse dark:text-gray-400">
+            Loading sales data...
+          </p>
+        </div>
+      ) : error ? (
+        <div className="p-8 text-center text-red-500 bg-red-50 rounded-lg border border-red-100 dark:bg-red-900/20 dark:border-red-900">
           <p className="font-semibold">Error Loading Dashboard</p>
           <p className="text-sm">{error}</p>
         </div>
       ) : dashboardData ? (
-        <>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
           {/* KPI CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <KPICard
@@ -123,7 +125,7 @@ export default function ExecutiveDashboard() {
               }
               value={formatCurrency(activeKPI?.totalReturns ?? 0)}
               icon={TrendingDown}
-              className="text-red-600"
+              className="text-red-600 dark:text-red-400"
             />
             <KPICard
               title="Gross Margin"
@@ -138,68 +140,87 @@ export default function ExecutiveDashboard() {
           </div>
 
           <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsList className="dark:bg-gray-800">
+              <TabsTrigger
+                value="overview"
+                className="dark:data-[state=active]:bg-gray-700 dark:text-gray-300"
+              >
+                Overview
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
               {/* PRIMARY CHARTS STACK */}
               <div className="space-y-6">
                 {/* 1. DIVISION SALES CHART */}
-                <Card className="shadow-sm">
+                <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
                   <CardHeader>
-                    <CardTitle>Division Sales Breakdown</CardTitle>
+                    <CardTitle className="dark:text-white">
+                      Division Sales Breakdown
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <DivisionSalesChart
-                      data={dashboardData.divisionSales || []}
-                      onBarClick={handleBarClick}
-                      activeDivision={selectedDivision}
-                    />
+                    {/* CSS Override: Forces chart bars to be white in dark mode */}
+                    <div className="dark:text-gray-100 [&_.recharts-bar-rectangle]:dark:fill-white">
+                      <DivisionSalesChart
+                        data={dashboardData.divisionSales || []}
+                        onBarClick={handleBarClick}
+                        activeDivision={selectedDivision}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* 2. TARGET VS ACHIEVEMENT CHART (Placed Below) */}
-                <Card className="shadow-sm">
+                {/* 2. TARGET VS ACHIEVEMENT CHART */}
+                <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
                   <CardHeader>
-                    <CardTitle>Target vs. Actual Achievement</CardTitle>
+                    <CardTitle className="dark:text-white">
+                      Target vs. Actual Achievement
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {/* Ensure dashboardData.divisionSales is passed, as it contains the totals we need */}
-                    <TargetAchievementChart
-                      data={dashboardData.divisionSales || []}
-                    />
+                    <div className="dark:text-gray-100 [&_.recharts-bar-rectangle]:dark:fill-white">
+                      <TargetAchievementChart
+                        data={dashboardData.divisionSales || []}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* DRILL DOWN SECTION (Visible only when a division is clicked) */}
+              {/* DRILL DOWN SECTION */}
               {selectedDivision ? (
                 <div
                   ref={drilldownRef}
                   className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Card className="border-gray-200 shadow-md">
-                      <CardHeader className="bg-gray-50/50 border-b">
-                        <CardTitle style={{ color: "#000000" }}>
+                    <Card className="border-gray-200 shadow-md dark:bg-gray-800 dark:border-gray-700">
+                      <CardHeader className="bg-gray-50/50 border-b dark:bg-gray-900/50 dark:border-gray-700">
+                        <CardTitle
+                          style={{ color: "var(--foreground)" }}
+                          className="dark:text-white"
+                        >
                           Supplier Breakdown: {selectedDivision}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="pt-6">
-                        <SupplierSalesChart
-                          data={
-                            dashboardData.supplierSalesByDivision?.[
-                              selectedDivision
-                            ] || []
-                          }
-                        />
+                        {/* Wrapper to fix bar colors in drilldown charts too */}
+                        <div className="[&_.recharts-bar-rectangle]:dark:fill-white">
+                          <SupplierSalesChart
+                            data={
+                              dashboardData.supplierSalesByDivision?.[
+                                selectedDivision
+                              ] || []
+                            }
+                          />
+                        </div>
                       </CardContent>
                     </Card>
 
-                    <Card className="shadow-md">
-                      <CardHeader className="border-b">
-                        <CardTitle>
+                    <Card className="shadow-md dark:bg-gray-800 dark:border-gray-700">
+                      <CardHeader className="border-b dark:border-gray-700">
+                        <CardTitle className="dark:text-white">
                           {selectedDivision} - Monthly Heatmap View
                         </CardTitle>
                       </CardHeader>
@@ -217,22 +238,27 @@ export default function ExecutiveDashboard() {
                   </div>
                 </div>
               ) : (
-                /* OVERALL TREND CHART (Visible when no division selected) */
-                <Card className="shadow-sm mt-6">
+                /* OVERALL TREND CHART */
+                <Card className="shadow-sm mt-6 dark:bg-gray-800 dark:border-gray-700">
                   <CardHeader>
-                    <CardTitle>Overall Monthly Trend</CardTitle>
+                    <CardTitle className="dark:text-white">
+                      Overall Monthly Trend
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <SalesTrendChart data={dashboardData.salesTrend || []} />
+                    <div className="dark:text-gray-100">
+                      <SalesTrendChart data={dashboardData.salesTrend || []} />
+                    </div>
                   </CardContent>
                 </Card>
               )}
             </TabsContent>
           </Tabs>
-        </>
+        </div>
       ) : (
-        <div className="flex items-center justify-center h-64 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-          <span className="text-gray-400">
+        // EMPTY STATE
+        <div className="flex items-center justify-center h-64 bg-gray-50 rounded-xl border border-dashed border-gray-200 dark:bg-gray-800/50 dark:border-gray-700">
+          <span className="text-gray-400 dark:text-gray-500">
             Select a date range to view data
           </span>
         </div>

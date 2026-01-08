@@ -28,7 +28,7 @@ import type { DashboardFilters } from "@/types";
 
 interface FilterBarProps {
   onFilterChange: (filters: DashboardFilters) => void;
-  branches?: any[]; // Kept for compatibility, though unused in this specific view
+  branches?: any[];
 }
 
 export function FilterBar({ onFilterChange }: FilterBarProps) {
@@ -117,21 +117,41 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
   }, []);
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-wrap gap-4 items-end">
+    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 items-end transition-colors duration-200">
       {/* 1. Date Preset Dropdown */}
       <div className="w-[200px]">
-        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">
           Time Period
         </label>
         <Select value={datePreset} onValueChange={handlePresetChange}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100">
             <SelectValue placeholder="Select period" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Today">Today</SelectItem>
-            <SelectItem value="This Week">This Week</SelectItem>
-            <SelectItem value="This Month">This Month</SelectItem>
-            <SelectItem value="Custom Range">Custom Range</SelectItem>
+          <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
+            <SelectItem
+              value="Today"
+              className="dark:text-gray-200 dark:focus:bg-gray-700"
+            >
+              Today
+            </SelectItem>
+            <SelectItem
+              value="This Week"
+              className="dark:text-gray-200 dark:focus:bg-gray-700"
+            >
+              This Week
+            </SelectItem>
+            <SelectItem
+              value="This Month"
+              className="dark:text-gray-200 dark:focus:bg-gray-700"
+            >
+              This Month
+            </SelectItem>
+            <SelectItem
+              value="Custom Range"
+              className="dark:text-gray-200 dark:focus:bg-gray-700"
+            >
+              Custom Range
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -140,7 +160,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
       {datePreset === "Custom Range" && (
         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
           <div>
-            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">
               Start Date
             </label>
             <Popover>
@@ -148,7 +168,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
                 <Button
                   variant={"outline"}
                   className={cn(
-                    "w-[140px] justify-start text-left font-normal",
+                    "w-[140px] justify-start text-left font-normal bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800",
                     !fromDate && "text-muted-foreground"
                   )}
                 >
@@ -160,19 +180,23 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
+              <PopoverContent
+                className="w-auto p-0 dark:bg-gray-800 dark:border-gray-700"
+                align="start"
+              >
                 <Calendar
                   mode="single"
                   selected={fromDate}
                   onSelect={setFromDate}
                   initialFocus
+                  className="dark:bg-gray-800 dark:text-gray-100"
                 />
               </PopoverContent>
             </Popover>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 block">
               End Date
             </label>
             <Popover>
@@ -180,7 +204,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
                 <Button
                   variant={"outline"}
                   className={cn(
-                    "w-[140px] justify-start text-left font-normal",
+                    "w-[140px] justify-start text-left font-normal bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800",
                     !toDate && "text-muted-foreground"
                   )}
                 >
@@ -192,12 +216,16 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
+              <PopoverContent
+                className="w-auto p-0 dark:bg-gray-800 dark:border-gray-700"
+                align="start"
+              >
                 <Calendar
                   mode="single"
                   selected={toDate}
                   onSelect={setToDate}
                   initialFocus
+                  className="dark:bg-gray-800 dark:text-gray-100"
                 />
               </PopoverContent>
             </Popover>
@@ -209,7 +237,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
       <div className="flex items-center gap-2 ml-auto">
         <Button
           onClick={handleApply}
-          className="bg-black text-white hover:bg-gray-800 transition-colors"
+          className="bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 transition-colors"
         >
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
@@ -217,7 +245,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
         <Button
           variant="outline"
           onClick={handleClear}
-          className="text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors"
+          className="text-gray-600 border-gray-300 hover:bg-gray-50 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors"
         >
           <X className="mr-2 h-4 w-4" />
           Clear

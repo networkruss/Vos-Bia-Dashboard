@@ -110,18 +110,20 @@ const GapVisualizer = ({ gap, percent }: { gap: number; percent: number }) => {
 
   return (
     <div className="flex items-center gap-2 w-32">
-      <span className="text-xs font-medium w-16 text-right">
+      <span className="text-xs font-medium w-16 text-right dark:text-gray-300">
         {formatCurrency(gap)}
       </span>
-      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
         <div
           className={`h-full ${
-            isPositiveGap ? "bg-black" : "bg-green-500"
+            isPositiveGap ? "bg-black dark:bg-white" : "bg-green-500"
           } rounded-full`}
           style={{ width: `${visualWidth}%` }}
         />
       </div>
-      <span className="text-xs text-gray-500 w-8">{percent}%</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400 w-8">
+        {percent}%
+      </span>
     </div>
   );
 };
@@ -234,32 +236,33 @@ export default function SalesmanDashboard() {
 
   if (loading || !data) {
     return (
-      <div className="p-8 flex items-center justify-center h-screen text-gray-500">
+      <div className="p-8 flex items-center justify-center h-screen text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900">
         Loading Dashboard...
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-8 bg-gray-50/30 min-h-screen">
+    // UPDATED: 'w-full' for fluid width & 'dark:bg-gray-900' for dark mode background
+    <div className="p-6 w-full mx-auto space-y-8 bg-gray-50/30 dark:bg-gray-900 min-h-screen transition-colors duration-300">
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Salesman Dashboard
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground dark:text-gray-400">
             Personal sales performance and order tracking
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
-          <span className="text-sm font-semibold text-gray-700 ml-2">
+        <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-2 rounded-lg border dark:border-gray-700 shadow-sm">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2">
             Salesman:
           </span>
           <select
             value={selectedSalesman}
             onChange={(e) => setSelectedSalesman(e.target.value)}
-            className="bg-gray-100 border-none rounded-md px-3 py-1 text-sm font-medium focus:ring-0 cursor-pointer"
+            className="bg-gray-100 dark:bg-gray-900 border-none rounded-md px-3 py-1 text-sm font-medium focus:ring-0 cursor-pointer dark:text-white"
           >
             {salesmen.map((s) => (
               <option key={s.id} value={s.id}>
@@ -300,41 +303,51 @@ export default function SalesmanDashboard() {
       </div>
 
       {/* ROW 2: SALES ORDER STATUS */}
-      <Card>
+      <Card className="dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
-          <CardTitle>Sales Order Status Monitoring</CardTitle>
-          <CardDescription>Track all your sales orders</CardDescription>
+          <CardTitle className="dark:text-white">
+            Sales Order Status Monitoring
+          </CardTitle>
+          <CardDescription className="dark:text-gray-400">
+            Track all your sales orders
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Order ID</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                <TableRow className="dark:border-gray-700">
+                  <TableHead className="dark:text-gray-400">Order ID</TableHead>
+                  <TableHead className="dark:text-gray-400">Date</TableHead>
+                  <TableHead className="dark:text-gray-400">Status</TableHead>
+                  <TableHead className="text-right dark:text-gray-400">
+                    Amount
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.orders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.id}</TableCell>
-                    <TableCell>{order.date}</TableCell>
+                  <TableRow key={order.id} className="dark:border-gray-700">
+                    <TableCell className="font-medium dark:text-gray-200">
+                      {order.id}
+                    </TableCell>
+                    <TableCell className="dark:text-gray-300">
+                      {order.date}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                           order.status === "Delivered"
-                            ? "bg-black text-white"
+                            ? "bg-black text-white dark:bg-white dark:text-black"
                             : order.status === "Shipped"
-                            ? "bg-gray-100 text-gray-800 border-gray-200"
-                            : "bg-white text-gray-600 border-gray-200"
+                            ? "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600"
+                            : "bg-white text-gray-600 border-gray-200 dark:bg-transparent dark:text-gray-400 dark:border-gray-600"
                         }`}
                       >
                         {order.status}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-bold">
+                    <TableCell className="text-right font-bold dark:text-white">
                       {formatCurrency(order.amount)}
                     </TableCell>
                   </TableRow>
@@ -346,62 +359,66 @@ export default function SalesmanDashboard() {
       </Card>
 
       {/* ROW 3: TARGET TRACKING */}
-      <Card>
+      <Card className="dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
-          <CardTitle>Target Tracking</CardTitle>
-          <CardDescription>
+          <CardTitle className="dark:text-white">Target Tracking</CardTitle>
+          <CardDescription className="dark:text-gray-400">
             Monitor your performance against targets
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Overall Target Bar */}
-          <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+          <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 dark:bg-gray-900 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-4">
-              <div className="p-2 bg-black rounded-full text-white">
+              <div className="p-2 bg-black rounded-full text-white dark:bg-white dark:text-black">
                 <TrendingUp className="h-4 w-4" />
               </div>
-              <h3 className="font-bold text-lg">Overall Target</h3>
-              <span className="ml-auto text-xs font-medium bg-gray-200 px-2 py-1 rounded">
+              <h3 className="font-bold text-lg dark:text-white">
+                Overall Target
+              </h3>
+              <span className="ml-auto text-xs font-medium bg-gray-200 px-2 py-1 rounded dark:bg-gray-700 dark:text-gray-300">
                 In Progress
               </span>
             </div>
 
             <div className="flex justify-between text-sm mb-2">
               <div>
-                <p className="text-gray-500">Target</p>
-                <p className="text-xl font-bold">
+                <p className="text-gray-500 dark:text-gray-400">Target</p>
+                <p className="text-xl font-bold dark:text-white">
                   {formatCurrency(data.target.total)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-500">Achieved</p>
-                <p className="text-xl font-bold">
+                <p className="text-gray-500 dark:text-gray-400">Achieved</p>
+                <p className="text-xl font-bold dark:text-white">
                   {formatCurrency(data.target.achieved)}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-gray-500">Gap to Goal</p>
-                <p className="text-xl font-bold text-red-500 flex items-center justify-end gap-1">
+                <p className="text-gray-500 dark:text-gray-400">Gap to Goal</p>
+                <p className="text-xl font-bold text-red-500 dark:text-red-400 flex items-center justify-end gap-1">
                   {formatCurrency(data.target.gap)}{" "}
                   <TrendingUp className="h-4 w-4 rotate-180" />
                 </p>
               </div>
             </div>
 
-            <div className="relative h-4 w-full bg-gray-200 rounded-full overflow-hidden">
+            <div className="relative h-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
-                className="absolute h-full bg-black rounded-full"
+                className="absolute h-full bg-black dark:bg-white rounded-full"
                 style={{ width: `${Math.min(data.target.percent, 100)}%` }}
               />
             </div>
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
               {data.target.percent}% of target achieved
             </p>
           </div>
 
-          {/* Achievement Trend - UPDATED TO SUPERVISOR STYLE */}
+          {/* Achievement Trend */}
           <div>
-            <h3 className="font-bold text-md mb-4">Target Achievement Trend</h3>
+            <h3 className="font-bold text-md mb-4 dark:text-white">
+              Target Achievement Trend
+            </h3>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
@@ -436,6 +453,7 @@ export default function SalesmanDashboard() {
                     strokeDasharray="3 3"
                     vertical={false}
                     stroke="#f0f0f0"
+                    className="dark:stroke-gray-700"
                   />
                   <XAxis
                     dataKey="month"
@@ -451,29 +469,33 @@ export default function SalesmanDashboard() {
                   />
                   <Tooltip
                     contentStyle={{
+                      backgroundColor: "#1f2937",
                       borderRadius: "8px",
                       border: "none",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      color: "#fff",
                     }}
                   />
                   <Legend verticalAlign="bottom" height={36} />
                   <Area
-                    type="natural"
+                    type="monotone"
                     dataKey="target"
                     name="Target"
                     stroke="#000000"
                     fill="url(#fillTarget)"
                     strokeWidth={2}
                     dot={false}
+                    className="dark:stroke-white dark:fill-white/10"
                   />
                   <Area
-                    type="natural"
+                    type="monotone"
                     dataKey="achieved"
                     name="Achieved"
                     stroke="#000000"
                     fill="url(#fillAchieved)"
                     strokeWidth={2}
                     dot={false}
+                    className="dark:stroke-blue-400"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -482,34 +504,40 @@ export default function SalesmanDashboard() {
 
           {/* Tactical SKU Table */}
           <div>
-            <h3 className="font-bold text-md mb-4">
+            <h3 className="font-bold text-md mb-4 dark:text-white">
               Tactical SKU Performance - Gap to Goal
             </h3>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-right w-[150px]">
+                  <TableRow className="dark:border-gray-700">
+                    <TableHead className="dark:text-gray-400">
+                      Product
+                    </TableHead>
+                    <TableHead className="text-right w-[150px] dark:text-gray-400">
                       Target
                     </TableHead>
-                    <TableHead className="text-right w-[150px]">
+                    <TableHead className="text-right w-[150px] dark:text-gray-400">
                       Achieved
                     </TableHead>
-                    <TableHead className="w-[200px] pl-8">Gap</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
+                    <TableHead className="w-[200px] pl-8 dark:text-gray-400">
+                      Gap
+                    </TableHead>
+                    <TableHead className="text-right dark:text-gray-400">
+                      Status
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.skuPerformance.map((sku, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">
+                    <TableRow key={idx} className="dark:border-gray-700">
+                      <TableCell className="font-medium dark:text-gray-200">
                         {sku.product}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right dark:text-gray-300">
                         {formatCurrency(sku.target)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right dark:text-gray-300">
                         {formatCurrency(sku.achieved)}
                       </TableCell>
                       <TableCell className="pl-8">
@@ -521,7 +549,7 @@ export default function SalesmanDashboard() {
                             sku.status === "Behind"
                               ? "bg-red-500"
                               : sku.status === "On Track"
-                              ? "bg-black"
+                              ? "bg-black dark:bg-white dark:text-black"
                               : "bg-yellow-500"
                           }`}
                         >
@@ -540,10 +568,12 @@ export default function SalesmanDashboard() {
       {/* ROW 4: SALES BY PRODUCT & SUPPLIER */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sales by Product */}
-        <Card>
+        <Card className="dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
-            <CardTitle>Sales by Product</CardTitle>
-            <CardDescription>Top performing products</CardDescription>
+            <CardTitle className="dark:text-white">Sales by Product</CardTitle>
+            <CardDescription className="dark:text-gray-400">
+              Top performing products
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[350px] w-full">
@@ -557,6 +587,7 @@ export default function SalesmanDashboard() {
                     strokeDasharray="3 3"
                     horizontal={false}
                     stroke="#f0f0f0"
+                    className="dark:stroke-gray-700"
                   />
                   <XAxis type="number" hide />
                   <YAxis
@@ -570,9 +601,11 @@ export default function SalesmanDashboard() {
                   <Tooltip
                     cursor={{ fill: "transparent" }}
                     contentStyle={{
+                      backgroundColor: "#1f2937",
                       borderRadius: "8px",
                       border: "none",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      color: "#fff",
                     }}
                     formatter={(val: number) => formatCurrency(val)}
                   />
@@ -581,6 +614,7 @@ export default function SalesmanDashboard() {
                     fill="#000000"
                     radius={[0, 0, 0, 0]}
                     barSize={24}
+                    className="dark:fill-white"
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -589,10 +623,12 @@ export default function SalesmanDashboard() {
         </Card>
 
         {/* Sales by Supplier */}
-        <Card>
+        <Card className="dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
-            <CardTitle>Sales by Supplier</CardTitle>
-            <CardDescription>Supplier distribution</CardDescription>
+            <CardTitle className="dark:text-white">Sales by Supplier</CardTitle>
+            <CardDescription className="dark:text-gray-400">
+              Supplier distribution
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[350px] w-full">
@@ -605,6 +641,7 @@ export default function SalesmanDashboard() {
                     strokeDasharray="3 3"
                     vertical={false}
                     stroke="#f0f0f0"
+                    className="dark:stroke-gray-700"
                   />
                   <XAxis
                     dataKey="name"
@@ -617,9 +654,11 @@ export default function SalesmanDashboard() {
                   <Tooltip
                     cursor={{ fill: "transparent" }}
                     contentStyle={{
+                      backgroundColor: "#1f2937",
                       borderRadius: "8px",
                       border: "none",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      color: "#fff",
                     }}
                     formatter={(val: number) => formatCurrency(val)}
                   />
@@ -628,156 +667,11 @@ export default function SalesmanDashboard() {
                     fill="#000000"
                     radius={[0, 0, 0, 0]}
                     barSize={100}
+                    className="dark:fill-white"
                   />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ROW 5: DETAILED TABLES */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Product Performance Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* UPDATED: Removed scroll container wrapper */}
-            <div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-center">Quantity</TableHead>
-                    <TableHead className="text-right">Sales Value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {/* Map over currentProducts instead of all data */}
-                  {currentProducts.map((prod, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium text-sm">
-                        {prod.name}
-                      </TableCell>
-                      <TableCell className="text-center text-sm">
-                        {prod.quantity.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-gray-700 text-sm">
-                        {formatCurrency(prod.value)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination Controls for Products */}
-            {data.topProducts.length > 0 && (
-              <div className="flex items-center justify-between mt-4 border-t pt-4">
-                <button
-                  onClick={handlePrevProductPage}
-                  disabled={productPage === 1}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </button>
-                <span className="text-sm text-gray-500">
-                  Page {productPage} of {totalProductPages}
-                </span>
-                <button
-                  onClick={handleNextProductPage}
-                  disabled={productPage === totalProductPages}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Return Monitoring</CardTitle>
-            <CardDescription>Track product returns</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Removed scroll container wrapper */}
-            <div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Return ID</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="w-[100px] text-center">
-                      Date
-                    </TableHead>
-                    <TableHead className="w-20 text-center">Qty</TableHead>
-                    <TableHead className="text-right">Reason</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentReturns.length > 0 ? (
-                    currentReturns.map((ret, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium text-xs">
-                          {ret.id}
-                        </TableCell>
-                        <TableCell className="text-sm">{ret.product}</TableCell>
-                        <TableCell className="text-sm text-center">
-                          {ret.date}
-                        </TableCell>
-                        <TableCell className="text-center text-sm">
-                          {ret.quantity}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs border whitespace-nowrap">
-                            {ret.reason}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center text-muted-foreground py-8"
-                      >
-                        No returns recorded.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination Controls for Returns */}
-            {data.returnHistory.length > 0 && (
-              <div className="flex items-center justify-between mt-4 border-t pt-4">
-                <button
-                  onClick={handlePrevReturnPage}
-                  disabled={returnPage === 1}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </button>
-                <span className="text-sm text-gray-500">
-                  Page {returnPage} of {totalReturnPages}
-                </span>
-                <button
-                  onClick={handleNextReturnPage}
-                  disabled={returnPage === totalReturnPages}
-                  className="flex items-center gap-1 text-sm font-medium text-gray-600 disabled:opacity-50 hover:text-black transition-colors"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
