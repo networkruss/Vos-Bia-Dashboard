@@ -82,13 +82,16 @@ interface DashboardData {
   };
 }
 
+// --- UPDATED: Added "Internal" to the list ---
 const DIVISIONS = [
   "Overview",
   "Dry Goods",
   "Industrial",
   "Mama Pina's",
   "Frozen Goods",
+  "Internal",
 ];
+
 const ITEMS_PER_PAGE = 5;
 const LIST_ITEMS_PER_PAGE = 5; // For Products & Customers lists
 
@@ -105,7 +108,7 @@ const CHART_COLORS = [
   "#0f172a",
 ];
 
-export default function ManagerDashboardV2() {
+export default function ManagerDashboard() {
   const [activeTab, setActiveTab] = useState(DIVISIONS[0]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -170,8 +173,17 @@ export default function ManagerDashboardV2() {
           activeTab: activeTab,
         });
 
-        const res = await fetch(`/api/sales/manager-v2?${query.toString()}`);
-        if (!res.ok) throw new Error(`Server Error: ${res.status}`);
+        // --- UPDATED: Fetch from the correct endpoint (/api/sales/manager) ---
+        const res = await fetch(`/api/sales/manager?${query.toString()}`);
+
+        if (!res.ok) {
+          if (res.status === 404)
+            throw new Error(
+              "API Route not found. Check /api/sales/manager/route.ts exists."
+            );
+          throw new Error(`Server Error: ${res.status}`);
+        }
+
         const json = await res.json();
         if (json.error) throw new Error(json.details || json.error);
 
@@ -241,7 +253,7 @@ export default function ManagerDashboardV2() {
 
       <div>
         <h1 className="text-3xl font-bold text-gray-900">
-          Inventory & Sales Manager V2
+          Inventory & Sales Manager
         </h1>
         <p className="text-gray-500">
           Tracking stock velocity, returns, and sales performance

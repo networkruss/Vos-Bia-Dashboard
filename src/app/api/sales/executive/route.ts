@@ -114,9 +114,13 @@ const DIVISION_RULES: any = {
     brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
     sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
   },
+  Internal: {
+    brands: ["Internal", "Office Supplies", "House Account", "VOS"],
+    sections: ["Internal", "Office", "Supplies", "Use"],
+  },
 };
 
-// DIRECT SUPPLIER MAPPING (Expanded based on your screenshots)
+// DIRECT SUPPLIER MAPPING
 const SUPPLIER_TO_DIVISION: any = {
   MEN2: "Dry Goods",
   "MEN2 MARKETING": "Dry Goods",
@@ -127,7 +131,6 @@ const SUPPLIER_TO_DIVISION: any = {
   VIRGINIA: "Frozen Goods",
   AVIKO: "Frozen Goods",
   MEKENI: "Frozen Goods",
-  // Fallbacks for unknown customer/suppliers in screenshots (Usually Dry Goods distributors)
   TIONGSAN: "Dry Goods",
   CSI: "Dry Goods",
   TSH: "Dry Goods",
@@ -135,6 +138,8 @@ const SUPPLIER_TO_DIVISION: any = {
   COSTSAVER: "Dry Goods",
   "RISING SUN": "Dry Goods",
   MUNICIPAL: "Dry Goods",
+  INTERNAL: "Internal",
+  VOS: "Internal",
 };
 
 const ALL_DIVISIONS = [
@@ -142,6 +147,7 @@ const ALL_DIVISIONS = [
   "Frozen Goods",
   "Industrial",
   "Mama Pina's",
+  "Internal",
 ];
 
 // --- HELPERS ---
@@ -171,13 +177,10 @@ function normalizeDate(d: string | null) {
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
 
-// *** CRITICAL FIX: Robust Boolean Checker for MySQL BIT fields ***
-// This handles 1, "1", true, and Buffer objects commonly returned by MySQL for BIT types
 function isTrue(field: any) {
   if (field === true) return true;
   if (field === 1) return true;
   if (field === "1") return true;
-  // Handle Buffer/Bit objects
   if (typeof field === "object" && field !== null) {
     if (field.data && field.data[0] === 1) return true;
     if (field.type === "Buffer" && field.data && field.data[0] === 1)
@@ -287,13 +290,12 @@ export async function GET(request: Request) {
     // --- 2. DIVISION MATCHING LOGIC ---
     const getDivisionForProduct = (pId: string) => {
       const prod = productMap.get(String(pId));
-      if (!prod) return "Dry Goods"; // Default fallback
+      if (!prod) return "Dry Goods";
 
       const pBrand = (prod.brand_name || "").toUpperCase();
       const pSection = (prod.section_name || "").toUpperCase();
       const pName = (prod.product_name || "").toUpperCase();
 
-      // 1. Check Config Rules
       for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
         const r = rules as any;
         if (
@@ -308,7 +310,6 @@ export async function GET(request: Request) {
           return divName;
       }
 
-      // 2. Check Supplier Name Mapping
       const suppId = primarySupplierMap.get(Number(pId));
       if (suppId) {
         const suppName =
@@ -318,10 +319,9 @@ export async function GET(request: Request) {
         }
       }
 
-      // 3. Last Resort Fallback (Instead of Unassigned)
       if (pSection.includes("FROZEN") || pName.includes("HOTDOG"))
         return "Frozen Goods";
-      return "Dry Goods"; // Default to biggest division
+      return "Dry Goods";
     };
 
     // --- 3. AGGREGATION SETUP ---
@@ -356,7 +356,6 @@ export async function GET(request: Request) {
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
 
-      // Note: We use details for accurate division split, so we don't sum grandTotal here if splitting
       invoiceLookup.set(inv.invoice_id, inv);
       filteredInvoiceIds.add(inv.invoice_id);
     });
@@ -377,21 +376,23 @@ export async function GET(request: Request) {
       const pId = String(det.product_id);
       const division = getDivisionForProduct(pId);
 
-      // GLOBAL FILTER
       if (divisionFilter && division !== divisionFilter) return;
 
+      // NET DETAIL = Total Amount - Discount Amount
       const netDetail = (+det.total_amount || 0) - (+det.discount_amount || 0);
       const unitCost = Number(productMap.get(pId)?.estimated_unit_cost || 0);
       const qty = Number(det.quantity) || 0;
       const cogs = unitCost * qty;
 
-      // Sum
       grandTotalSales += netDetail;
       grandTotalCOGS += cogs;
+
+      // Note: We sum net sales here, but we need to subtract returns later
       divisionTotals.set(
         division,
         (divisionTotals.get(division) || 0) + netDetail
       );
+
       trendMap.set(d, (trendMap.get(d) || 0) + netDetail);
 
       if (divisionStats.has(division)) {
@@ -419,24 +420,34 @@ export async function GET(request: Request) {
       }
     });
 
-    // --- 6. PROCESS RETURNS (Time-Based) ---
-    // Returns logic is often disconnected from invoice ID in DBs, so we use Date Range on the Return itself.
+    // --- 6. PROCESS RETURNS (Updated Logic) ---
     const validReturnIds = new Set();
+
+    // First, map valid return HEADERS by date
     returns.forEach((ret: any) => {
       if (!ret.return_date) return;
       const d = ret.return_date.substring(0, 10);
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
-      validReturnIds.add(ret.return_number);
+
+      // Store ID because details usually reference ID
+      if (ret.id) validReturnIds.add(ret.id);
+      // Also store return_number string just in case legacy data matches by string
+      if (ret.return_number) validReturnIds.add(ret.return_number);
     });
 
     returnDetails.forEach((rd: any) => {
-      if (!validReturnIds.has(rd.return_no)) return;
+      // Robust check: rd.return_no can be an ID or an Object
+      const returnRef =
+        typeof rd.return_no === "object" ? rd.return_no?.id : rd.return_no;
+
+      if (!validReturnIds.has(returnRef)) return;
 
       const pId = String(rd.product_id);
       const qty = Number(rd.quantity) || 0;
 
       // Use price from product mapping to estimate value if not in return detail
+      // Assuming returns are 100% value refund unless specified
       const price = productPriceMap.get(pId) || 0;
       const returnVal = qty * price;
 
@@ -450,32 +461,29 @@ export async function GET(request: Request) {
       }
     });
 
-    // --- 7. PROCESS COLLECTIONS (Fixed Boolean Logic) ---
+    // --- 7. PROCESS COLLECTIONS ---
     collections.forEach((col: any) => {
-      // Skip only if strictly Cancelled
       if (isTrue(col.isCancelled)) return;
 
       if (!col.collection_date) return;
       const d = col.collection_date.substring(0, 10);
 
-      // Date Filter (Collections use their own date, not invoice date)
       if (fromDate && d < fromDate) return;
       if (toDate && d > toDate) return;
 
       const amount = Number(col.totalAmount) || 0;
 
-      // Division Logic for Collections
-      // Since collections are per Salesman, we map Salesman -> Division
       const sId = String(col.salesman_id);
       const divId = salesmanDivisionMap.get(sId);
       let colDiv = divId
         ? divisionNameMap.get(divId) || "Dry Goods"
         : "Dry Goods";
 
-      // Name Normalization
       if (colDiv === "Frozen") colDiv = "Frozen Goods";
       if (colDiv === "Dry") colDiv = "Dry Goods";
-      if (!ALL_DIVISIONS.includes(colDiv)) colDiv = "Dry Goods"; // Default fallback
+      if (colDiv === "Internal Goods") colDiv = "Internal";
+
+      if (!ALL_DIVISIONS.includes(colDiv)) colDiv = "Dry Goods";
 
       if (divisionFilter && colDiv !== divisionFilter) return;
 
@@ -487,20 +495,25 @@ export async function GET(request: Request) {
     });
 
     // --- 8. RESULTS ---
+    // Net Sales = (Gross Sales - Discounts) - Returns
     const netSales = grandTotalSales - grandTotalReturns;
+
     const grossMargin =
       netSales > 0 ? ((netSales - grandTotalCOGS) / netSales) * 100 : 0;
     const collectionRate =
       netSales > 0 ? (grandTotalCollected / netSales) * 100 : 0;
 
+    // Fix: Ensure Division Breakdown reflects Net Sales (minus returns)
     const divisionSalesFormatted = Array.from(divisionTotals.entries())
-      .map(([division, netSales]) => ({
-        division,
-        netSales: toFixed(netSales),
-      }))
+      .map(([division, grossSales]) => {
+        const divReturns = divisionStats.get(division)?.returns || 0;
+        return {
+          division,
+          netSales: toFixed(grossSales - divReturns), // Subtract returns here
+        };
+      })
       .sort((a, b) => b.netSales - a.netSales);
 
-    // Trend Data
     let salesTrendFormatted: any[] = [];
     if (fromDate && toDate) {
       salesTrendFormatted = getDatesInRange(fromDate, toDate).map((date) => ({
@@ -522,7 +535,6 @@ export async function GET(request: Request) {
         }));
     }
 
-    // Chart Data
     const chartFinal: any = {};
     for (const [divName, sMap] of supplierChartMap.entries()) {
       chartFinal[divName] = Array.from(sMap.entries())
@@ -548,11 +560,12 @@ export async function GET(request: Request) {
 
     const kpiByDivision: any = {};
     divisionStats.forEach((val, key) => {
+      const divNetSales = val.sales - val.returns;
       const divGM =
-        val.sales > 0 ? ((val.sales - val.cogs) / val.sales) * 100 : 0;
-      const divCR = val.sales > 0 ? (val.collections / val.sales) * 100 : 0;
+        divNetSales > 0 ? ((divNetSales - val.cogs) / divNetSales) * 100 : 0;
+      const divCR = divNetSales > 0 ? (val.collections / divNetSales) * 100 : 0;
       kpiByDivision[key] = {
-        totalNetSales: toFixed(val.sales),
+        totalNetSales: toFixed(divNetSales),
         totalReturns: toFixed(val.returns),
         grossMargin: toFixed(divGM),
         collectionRate: toFixed(divCR),

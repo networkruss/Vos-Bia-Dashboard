@@ -44,12 +44,7 @@ const navItems: NavItem[] = [
     icon: TrendingUp,
     role: ["manager", "executive"],
   },
-  {
-    title: "Manager V2 (Test)",
-    href: "/bi/manager-v2",
-    icon: Activity,
-    role: ["manager", "executive"],
-  },
+
   {
     title: "Supervisor Dashboard",
     href: "/bi/supervisor",

@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/dashboard/FilterBar";
 import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 import { SalesTrendChart } from "@/components/modules/bi/SalesTrendChart";
 import { DivisionSalesChart } from "@/components/modules/bi/DivisionSalesChart";
+import { TargetAchievementChart } from "@/components/modules/bi/TargetAchievementChart"; // Ensure this file exists
 import { SupplierSalesChart } from "@/components/dashboard/SupplierSalesChart";
 import { SupplierHeatmap } from "@/components/dashboard/SupplierHeatmap";
 
@@ -142,64 +143,82 @@ export default function ExecutiveDashboard() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              {/* DIVISION SALES CHART */}
-              <Card className="shadow-sm">
-                <CardHeader>
-                  <CardTitle>Division Sales</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <DivisionSalesChart
-                    data={dashboardData.divisionSales || []}
-                    onBarClick={handleBarClick}
-                    activeDivision={selectedDivision}
-                  />
-                </CardContent>
-              </Card>
+              {/* PRIMARY CHARTS STACK */}
+              <div className="space-y-6">
+                {/* 1. DIVISION SALES CHART */}
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Division Sales Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <DivisionSalesChart
+                      data={dashboardData.divisionSales || []}
+                      onBarClick={handleBarClick}
+                      activeDivision={selectedDivision}
+                    />
+                  </CardContent>
+                </Card>
 
-              {/* DRILL DOWN SECTION */}
+                {/* 2. TARGET VS ACHIEVEMENT CHART (Placed Below) */}
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Target vs. Actual Achievement</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Ensure dashboardData.divisionSales is passed, as it contains the totals we need */}
+                    <TargetAchievementChart
+                      data={dashboardData.divisionSales || []}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* DRILL DOWN SECTION (Visible only when a division is clicked) */}
               {selectedDivision ? (
                 <div
                   ref={drilldownRef}
                   className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500"
                 >
-                  <Card className="border-gray-200 shadow-md">
-                    <CardHeader className="bg-gray-50/50 border-b">
-                      <CardTitle style={{ color: "#000000" }}>
-                        Supplier Breakdown: {selectedDivision}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                      <SupplierSalesChart
-                        data={
-                          dashboardData.supplierSalesByDivision?.[
-                            selectedDivision
-                          ] || []
-                        }
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Card className="border-gray-200 shadow-md">
+                      <CardHeader className="bg-gray-50/50 border-b">
+                        <CardTitle style={{ color: "#000000" }}>
+                          Supplier Breakdown: {selectedDivision}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-6">
+                        <SupplierSalesChart
+                          data={
+                            dashboardData.supplierSalesByDivision?.[
+                              selectedDivision
+                            ] || []
+                          }
+                        />
+                      </CardContent>
+                    </Card>
 
-                  <Card className="shadow-md">
-                    <CardHeader className="border-b">
-                      <CardTitle>
-                        {selectedDivision} - Monthly Heatmap View
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                      <SupplierHeatmap
-                        data={
-                          dashboardData.heatmapDataByDivision?.[
-                            selectedDivision
-                          ] || []
-                        }
-                        divisionName={selectedDivision}
-                      />
-                    </CardContent>
-                  </Card>
+                    <Card className="shadow-md">
+                      <CardHeader className="border-b">
+                        <CardTitle>
+                          {selectedDivision} - Monthly Heatmap View
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-6">
+                        <SupplierHeatmap
+                          data={
+                            dashboardData.heatmapDataByDivision?.[
+                              selectedDivision
+                            ] || []
+                          }
+                          divisionName={selectedDivision}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               ) : (
                 /* OVERALL TREND CHART (Visible when no division selected) */
-                <Card className="shadow-sm">
+                <Card className="shadow-sm mt-6">
                   <CardHeader>
                     <CardTitle>Overall Monthly Trend</CardTitle>
                   </CardHeader>

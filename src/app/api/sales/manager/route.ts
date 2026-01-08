@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 
-// --- CHANGE: Fetch from Environment Variable ---
 const DIRECTUS_URL = process.env.DIRECTUS_URL;
 
 if (!DIRECTUS_URL) {
-  throw new Error("Missing DIRECTUS_URL in .env.local");
+  console.error("Missing DIRECTUS_URL in .env.local");
 }
 
-// --- 1. CONFIGURATION RULES ---
+// --- 1. CONFIGURATION RULES (Hardcoded logic habang wala pa sa DB) ---
 const DIVISION_RULES: any = {
   "Dry Goods": {
     brands: [
@@ -119,13 +118,35 @@ const DIVISION_RULES: any = {
     brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
     sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
   },
+  // --- INTERNAL (Abang Mode) ---
+  // Kahit wala ito sa DB division table, dito natin i-dedefine para mabasa ng logic
+  Internal: {
+    brands: ["Internal", "Office Supplies", "VOS"],
+    sections: ["Internal", "Office", "Supplies"],
+  },
 };
 
+// IMPORTANT: Ito ang listahan na gagamitin ng Dashboard para mag-loop.
+// Dahil nandito ang "Internal", lalabas ito sa UI kahit 0 pa ang sales.
 const ALL_DIVISIONS = [
   "Dry Goods",
   "Frozen Goods",
   "Industrial",
   "Mama Pina's",
+  "Internal",
+];
+
+// KEYWORDS: Ito ang magfi-filter ng customers habang wala pang 'customer_type' sa DB
+const INTERNAL_CUSTOMER_KEYWORDS = [
+  "WALK-IN",
+  "WALKIN",
+  "EMPLOYEE",
+  "POLITICIAN",
+  "CLE ACE",
+  "OFFICE",
+  "INTERNAL",
+  "VOS",
+  "USE", // For "Office Use"
 ];
 
 // --- HELPERS ---
@@ -134,7 +155,7 @@ async function fetchAll<T = any>(
   params: string = ""
 ): Promise<T[]> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout prevents early aborts
   try {
     const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
     const res = await fetch(url, {
@@ -279,9 +300,20 @@ export async function GET(request: Request) {
     salesmen.forEach((s: any) =>
       salesmanMap.set(getSafeId(s.id), s.salesman_name)
     );
+
+    // CUSTOMER MAP
     const customerMap = new Map();
     customers.forEach((c: any) =>
-      customerMap.set(String(c.customer_code), c.store_name)
+      customerMap.set(
+        String(c.customer_code),
+        String(c.store_name || "").toUpperCase()
+      )
+    );
+
+    // INVOICE LOOKUP
+    const invoiceLookup = new Map();
+    invoices.forEach((inv: any) =>
+      invoiceLookup.set(getSafeId(inv.invoice_id), inv)
     );
 
     const validInvoiceIds = new Set(
@@ -291,14 +323,16 @@ export async function GET(request: Request) {
       returns.map((r: any) => String(r.return_number))
     );
 
-    // --- AGGREGATION ---
+    // --- AGGREGATION SETUP ---
+    // Initialize stats for ALL DIVISIONS (including Internal)
+    const divisionStats = new Map<string, { good: number; bad: number }>();
+    ALL_DIVISIONS.forEach((div) => divisionStats.set(div, { good: 0, bad: 0 }));
+
     const trendMap = new Map<string, { good: number; bad: number }>();
     const supplierSales = new Map<string, number>();
     const salesmanSales = new Map<string, number>();
     const productSales = new Map<string, number>();
     const customerSales = new Map<string, number>();
-    const divisionStats = new Map<string, { good: number; bad: number }>();
-    ALL_DIVISIONS.forEach((div) => divisionStats.set(div, { good: 0, bad: 0 }));
 
     let totalGoodStockOutflow = 0;
     let totalBadStockInflow = 0;
@@ -307,7 +341,7 @@ export async function GET(request: Request) {
     const getSupplierName = (pId: string) => {
       const sId = productToSupplierMap.get(pId);
       if (sId && supplierNameMap.has(sId)) return supplierNameMap.get(sId)!;
-
+      // Fallback Names
       const pName = (productMap.get(pId)?.product_name || "").toUpperCase();
       if (pName.includes("MEN2")) return "MEN2 MARKETING";
       if (pName.includes("PUREFOODS") || pName.includes("PF"))
@@ -316,47 +350,47 @@ export async function GET(request: Request) {
       if (pName.includes("VIRGINIA")) return "VIRGINIA FOOD INC";
       if (pName.includes("MEKENI")) return "MEKENI FOOD CORP";
       if (pName.includes("MAMA PINA")) return "MAMA PINA'S";
-
       return "Internal / Others";
     };
 
-    const checkDivision = (pId: string, divisionName: string) => {
+    const getTransactionDivision = (pId: string, invoiceId: string) => {
+      // 1. PRIORITY: Check Customer Name for Internal Keywords
+      // Ito ang "Abang" logic. Kung may makitang keyword sa customer name, Internal agad.
+      const inv = invoiceLookup.get(invoiceId);
+      if (inv) {
+        const custName = customerMap.get(String(inv.customer_code)) || "";
+        if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k))) {
+          return "Internal";
+        }
+      }
+
+      // 2. SECONDARY: Check Product Brand/Section
       const prod = productMap.get(pId);
-      if (!prod) return false;
+      if (!prod) return "Dry Goods";
 
       const pBrand = (prod.brand_name || "").toUpperCase();
       const pSection = (prod.section_name || "").toUpperCase();
       const pName = (prod.product_name || "").toUpperCase();
-      const tab = divisionName.toUpperCase().trim();
 
-      const rules = DIVISION_RULES[divisionName];
-      if (rules) {
+      for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
+        const r = rules as any;
         if (
-          rules.brands.some(
+          r.brands.some(
             (b: string) =>
               pBrand.includes(b.toUpperCase()) ||
               pName.includes(b.toUpperCase())
           )
         )
-          return true;
-        if (
-          rules.sections.some((s: string) => pSection.includes(s.toUpperCase()))
-        )
-          return true;
+          return divName;
+        if (r.sections.some((s: string) => pSection.includes(s.toUpperCase())))
+          return divName;
       }
-
-      const cleanTab = tab.replace(" GOODS", "").replace(" OVERVIEW", "");
-      if (
-        cleanTab &&
-        (pSection.includes(cleanTab) || pBrand.includes(cleanTab))
-      )
-        return true;
-      return false;
+      return "Dry Goods";
     };
 
-    const isDivisionMatch = (pId: string) => {
-      if (!activeTab || activeTab === "Overview") return true;
-      return checkDivision(pId, activeTab);
+    const isTabMatch = (realDivision: string, currentTab: string) => {
+      if (!currentTab || currentTab === "Overview") return true;
+      return realDivision === currentTab;
     };
 
     // Init Trend
@@ -376,23 +410,25 @@ export async function GET(request: Request) {
       const qty = Number(det.quantity) || 0;
       const amt = Number(det.total_amount) || 0;
 
-      ALL_DIVISIONS.forEach((divName) => {
-        if (checkDivision(pId, divName)) {
-          divisionStats.get(divName)!.good += qty;
-        }
-      });
+      // Determine Division (Customer-First approach)
+      const realDivision = getTransactionDivision(pId, invId);
 
-      if (isDivisionMatch(pId)) {
+      // Populate Stats (Even if Transactions are 0 for Internal, the key exists)
+      if (divisionStats.has(realDivision)) {
+        divisionStats.get(realDivision)!.good += qty;
+      }
+
+      // Populate Data for Current Tab
+      if (isTabMatch(realDivision, activeTab)) {
         totalGoodStockOutflow += qty;
+
         const pName = productMap.get(pId)?.product_name || `Product ${pId}`;
         productSales.set(pName, (productSales.get(pName) || 0) + amt);
 
         const sName = getSupplierName(pId);
         supplierSales.set(sName, (supplierSales.get(sName) || 0) + amt);
 
-        const parent = invoices.find(
-          (i: any) => getSafeId(i.invoice_id) === invId
-        );
+        const parent = invoiceLookup.get(invId);
         if (parent) {
           const d = parent.invoice_date.substring(0, 10);
           const curr = trendMap.get(d) || { good: 0, bad: 0 };
@@ -420,13 +456,32 @@ export async function GET(request: Request) {
       const pId = getSafeId(ret.product_id);
       const qty = Number(ret.quantity) || 0;
 
-      ALL_DIVISIONS.forEach((divName) => {
-        if (checkDivision(pId, divName)) {
-          divisionStats.get(divName)!.bad += qty;
+      // Fallback logic for returns (mostly Product based unless you fetch return->customer)
+      const prod = productMap.get(pId);
+      let realDivision = "Dry Goods";
+      if (prod) {
+        const pBrand = (prod.brand_name || "").toUpperCase();
+        const pSection = (prod.section_name || "").toUpperCase();
+        for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
+          const r = rules as any;
+          if (r.brands.some((b: string) => pBrand.includes(b.toUpperCase()))) {
+            realDivision = divName;
+            break;
+          }
+          if (
+            r.sections.some((s: string) => pSection.includes(s.toUpperCase()))
+          ) {
+            realDivision = divName;
+            break;
+          }
         }
-      });
+      }
 
-      if (isDivisionMatch(pId)) {
+      if (divisionStats.has(realDivision)) {
+        divisionStats.get(realDivision)!.bad += qty;
+      }
+
+      if (isTabMatch(realDivision, activeTab)) {
         totalBadStockInflow += qty;
         const parent = returns.find(
           (r: any) => String(r.return_number) === retId
@@ -443,7 +498,23 @@ export async function GET(request: Request) {
     // --- CALCULATE ---
     let totalCurrentStock = 0;
     productMap.forEach((prod: any, pId: string) => {
-      if (isDivisionMatch(pId)) {
+      let prodDiv = "Dry Goods";
+      const pBrand = (prod.brand_name || "").toUpperCase();
+      const pSection = (prod.section_name || "").toUpperCase();
+      for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
+        const r = rules as any;
+        if (r.brands.some((b: string) => pBrand.includes(b.toUpperCase()))) {
+          prodDiv = divName;
+          break;
+        }
+        if (
+          r.sections.some((s: string) => pSection.includes(s.toUpperCase()))
+        ) {
+          prodDiv = divName;
+          break;
+        }
+      }
+      if (isTabMatch(prodDiv, activeTab)) {
         totalCurrentStock += prod.stock || 0;
       }
     });
@@ -496,24 +567,23 @@ export async function GET(request: Request) {
       .sort((a, b) => b.value - a.value);
 
     const salesBySupplier = allSupplierSales.slice(0, 10);
-
     const salesBySalesman = Array.from(salesmanSales.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
 
-    // Increased slice to 50 for pagination support
     const topProducts = Array.from(productSales.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 50);
 
-    // Increased slice to 50 for pagination support
     const topCustomers = Array.from(customerSales.entries())
+      // Hide Internal-tagged customers from the general Pareto list if desired, or keep them.
+      // Filtering them out to keep Pareto clean for "Real" customers:
       .filter(
         ([name]) =>
           !name.toUpperCase().includes("MEN2") &&
-          !name.toUpperCase().includes("INTERNAL")
+          !INTERNAL_CUSTOMER_KEYWORDS.some((k) => name.includes(k))
       )
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
@@ -526,6 +596,7 @@ export async function GET(request: Request) {
       salesmen: [{ name: "Total Sales", amount: s.value, percent: 100 }],
     }));
 
+    // Ensure INTERNAL shows up here even if 0
     const divisionBreakdown = ALL_DIVISIONS.map((divName) => {
       const stats = divisionStats.get(divName) || { good: 0, bad: 0 };
       return {
