@@ -160,7 +160,7 @@ export default function ExecutiveDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {/* CSS Override: Forces chart bars to be white in dark mode */}
+                    {/* CSS Override: Forces bars to be white in dark mode if they are standard SVG rects */}
                     <div className="dark:text-gray-100 [&_.recharts-bar-rectangle]:dark:fill-white">
                       <DivisionSalesChart
                         data={dashboardData.divisionSales || []}
@@ -179,7 +179,8 @@ export default function ExecutiveDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="dark:text-gray-100 [&_.recharts-bar-rectangle]:dark:fill-white">
+                    {/* For Target chart, we usually keep colors (Blue/Green), so we just fix axis text color */}
+                    <div className="dark:text-gray-100 [&_.recharts-cartesian-axis-tick-value]:dark:fill-gray-400">
                       <TargetAchievementChart
                         data={dashboardData.divisionSales || []}
                       />
@@ -195,6 +196,7 @@ export default function ExecutiveDashboard() {
                   className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Supplier Sales Chart */}
                     <Card className="border-gray-200 shadow-md dark:bg-gray-800 dark:border-gray-700">
                       <CardHeader className="bg-gray-50/50 border-b dark:bg-gray-900/50 dark:border-gray-700">
                         <CardTitle
@@ -205,8 +207,8 @@ export default function ExecutiveDashboard() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="pt-6">
-                        {/* Wrapper to fix bar colors in drilldown charts too */}
-                        <div className="[&_.recharts-bar-rectangle]:dark:fill-white">
+                        {/* CSS Override: Forces supplier bars to be white in dark mode */}
+                        <div className="[&_.recharts-bar-rectangle]:dark:fill-white [&_.recharts-cartesian-axis-tick-value]:dark:fill-gray-400">
                           <SupplierSalesChart
                             data={
                               dashboardData.supplierSalesByDivision?.[
@@ -218,6 +220,7 @@ export default function ExecutiveDashboard() {
                       </CardContent>
                     </Card>
 
+                    {/* Heatmap Card */}
                     <Card className="shadow-md dark:bg-gray-800 dark:border-gray-700">
                       <CardHeader className="border-b dark:border-gray-700">
                         <CardTitle className="dark:text-white">
@@ -225,14 +228,16 @@ export default function ExecutiveDashboard() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="pt-6">
-                        <SupplierHeatmap
-                          data={
-                            dashboardData.heatmapDataByDivision?.[
-                              selectedDivision
-                            ] || []
-                          }
-                          divisionName={selectedDivision}
-                        />
+                        <div className="dark:text-gray-200">
+                          <SupplierHeatmap
+                            data={
+                              dashboardData.heatmapDataByDivision?.[
+                                selectedDivision
+                              ] || []
+                            }
+                            divisionName={selectedDivision}
+                          />
+                        </div>
                       </CardContent>
                     </Card>
                   </div>
@@ -246,7 +251,7 @@ export default function ExecutiveDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="dark:text-gray-100">
+                    <div className="dark:text-gray-100 [&_.recharts-cartesian-axis-tick-value]:dark:fill-gray-400">
                       <SalesTrendChart data={dashboardData.salesTrend || []} />
                     </div>
                   </CardContent>

@@ -30,8 +30,8 @@ const navItems: NavItem[] = [
     role: ["executive"],
   },
   {
-    title: "Executive Dashboard V2 (test)",
-    href: "/bi/executive-v2",
+    title: "Divisions Head Dashboard (test)",
+    href: "/bi/divisionshead",
     icon: Presentation,
     role: ["executive"],
   },
@@ -49,9 +49,9 @@ const navItems: NavItem[] = [
   },
   {
     title: "Salesman Dashboard",
-    href: "/bi/encoder",
+    href: "/bi/salesman",
     icon: Package,
-    role: ["encoder", "executive"],
+    role: ["salesman", "executive"],
   },
 ];
 
@@ -115,7 +115,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
               V
             </div>
             <div>
-              <h1 className="text-lg font-bold dark:text-gray-100">VOS BI</h1>
+              <h1 className="text-lg font-bold dark:text-gray-100">VOS BIA</h1>
               <p className="text-xs text-muted-foreground dark:text-gray-400">
                 Sales Dashboard
               </p>

@@ -17,8 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   XAxis,
@@ -26,6 +24,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  AreaChart,
+  Area,
   Legend,
 } from "recharts";
 import {
@@ -34,8 +34,6 @@ import {
   Package,
   RefreshCcw,
   TrendingUp,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import { KPICard, formatCurrency } from "@/components/dashboard/KPICard";
 
@@ -134,16 +132,11 @@ export default function SalesmanDashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
 
-  // --- Pagination State ---
-  const [returnPage, setReturnPage] = useState(1);
-  const [productPage, setProductPage] = useState(1);
-  const itemsPerPage = 5;
-
   // Initial Load: Fetch Salesmen List
   useEffect(() => {
     async function fetchSalesmen() {
       try {
-        const res = await fetch("/api/sales/encoder?type=salesmen");
+        const res = await fetch("/api/sales/salesman?type=salesmen");
         const json = await res.json();
 
         if (json.data && Array.isArray(json.data)) {
@@ -169,11 +162,9 @@ export default function SalesmanDashboard() {
 
     async function fetchDashboard() {
       setLoading(true);
-      setReturnPage(1);
-      setProductPage(1);
       try {
         const res = await fetch(
-          `/api/sales/encoder?type=dashboard&salesmanId=${selectedSalesman}`
+          `/api/sales/salesman?type=dashboard&salesmanId=${selectedSalesman}`
         );
         const json = await res.json();
 
@@ -203,37 +194,6 @@ export default function SalesmanDashboard() {
     fetchDashboard();
   }, [selectedSalesman]);
 
-  // --- Pagination Logic ---
-  const totalReturnPages = data
-    ? Math.ceil(data.returnHistory.length / itemsPerPage)
-    : 0;
-  const currentReturns = data
-    ? data.returnHistory.slice(
-        (returnPage - 1) * itemsPerPage,
-        returnPage * itemsPerPage
-      )
-    : [];
-
-  const totalProductPages = data
-    ? Math.ceil(data.topProducts.length / itemsPerPage)
-    : 0;
-  const currentProducts = data
-    ? data.topProducts.slice(
-        (productPage - 1) * itemsPerPage,
-        productPage * itemsPerPage
-      )
-    : [];
-
-  // Handlers
-  const handleNextReturnPage = () =>
-    returnPage < totalReturnPages && setReturnPage(returnPage + 1);
-  const handlePrevReturnPage = () =>
-    returnPage > 1 && setReturnPage(returnPage - 1);
-  const handleNextProductPage = () =>
-    productPage < totalProductPages && setProductPage(productPage + 1);
-  const handlePrevProductPage = () =>
-    productPage > 1 && setProductPage(productPage - 1);
-
   if (loading || !data) {
     return (
       <div className="p-8 flex items-center justify-center h-screen text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-900">
@@ -243,7 +203,6 @@ export default function SalesmanDashboard() {
   }
 
   return (
-    // UPDATED: 'w-full' for fluid width & 'dark:bg-gray-900' for dark mode background
     <div className="p-6 w-full mx-auto space-y-8 bg-gray-50/30 dark:bg-gray-900 min-h-screen transition-colors duration-300">
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -273,7 +232,7 @@ export default function SalesmanDashboard() {
         </div>
       </div>
 
-      {/* ROW 1: KPI CARDS */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Total Orders"
@@ -302,14 +261,12 @@ export default function SalesmanDashboard() {
         />
       </div>
 
-      {/* ROW 2: SALES ORDER STATUS */}
+      {/* SALES ORDER STATUS */}
       <Card className="dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
-          <CardTitle className="dark:text-white">
-            Sales Order Status Monitoring
-          </CardTitle>
+          <CardTitle className="dark:text-white">Sales Order Status</CardTitle>
           <CardDescription className="dark:text-gray-400">
-            Track all your sales orders
+            Recent order updates
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -358,29 +315,14 @@ export default function SalesmanDashboard() {
         </CardContent>
       </Card>
 
-      {/* ROW 3: TARGET TRACKING */}
+      {/* TARGET TRACKING */}
       <Card className="dark:bg-gray-800 dark:border-gray-700">
         <CardHeader>
-          <CardTitle className="dark:text-white">Target Tracking</CardTitle>
-          <CardDescription className="dark:text-gray-400">
-            Monitor your performance against targets
-          </CardDescription>
+          <CardTitle className="dark:text-white">Performance Targets</CardTitle>
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Overall Target Bar */}
           <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 dark:bg-gray-900 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="p-2 bg-black rounded-full text-white dark:bg-white dark:text-black">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-              <h3 className="font-bold text-lg dark:text-white">
-                Overall Target
-              </h3>
-              <span className="ml-auto text-xs font-medium bg-gray-200 px-2 py-1 rounded dark:bg-gray-700 dark:text-gray-300">
-                In Progress
-              </span>
-            </div>
-
             <div className="flex justify-between text-sm mb-2">
               <div>
                 <p className="text-gray-500 dark:text-gray-400">Target</p>
@@ -394,15 +336,7 @@ export default function SalesmanDashboard() {
                   {formatCurrency(data.target.achieved)}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-gray-500 dark:text-gray-400">Gap to Goal</p>
-                <p className="text-xl font-bold text-red-500 dark:text-red-400 flex items-center justify-end gap-1">
-                  {formatCurrency(data.target.gap)}{" "}
-                  <TrendingUp className="h-4 w-4 rotate-180" />
-                </p>
-              </div>
             </div>
-
             <div className="relative h-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="absolute h-full bg-black dark:bg-white rounded-full"
@@ -414,158 +348,69 @@ export default function SalesmanDashboard() {
             </p>
           </div>
 
-          {/* Achievement Trend */}
-          <div>
-            <h3 className="font-bold text-md mb-4 dark:text-white">
-              Target Achievement Trend
-            </h3>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={data.trend}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="fillTarget" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
-                      <stop
-                        offset="95%"
-                        stopColor="#8b5cf6"
-                        stopOpacity={0.1}
-                      />
-                    </linearGradient>
-                    <linearGradient
-                      id="fillAchieved"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                      <stop
-                        offset="95%"
-                        stopColor="#3b82f6"
-                        stopOpacity={0.1}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f0f0f0"
-                    className="dark:stroke-gray-700"
-                  />
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#888" }}
-                    dy={10}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#888" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1f2937",
-                      borderRadius: "8px",
-                      border: "none",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                      color: "#fff",
-                    }}
-                  />
-                  <Legend verticalAlign="bottom" height={36} />
-                  <Area
-                    type="monotone"
-                    dataKey="target"
-                    name="Target"
-                    stroke="#000000"
-                    fill="url(#fillTarget)"
-                    strokeWidth={2}
-                    dot={false}
-                    className="dark:stroke-white dark:fill-white/10"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="achieved"
-                    name="Achieved"
-                    stroke="#000000"
-                    fill="url(#fillAchieved)"
-                    strokeWidth={2}
-                    dot={false}
-                    className="dark:stroke-blue-400"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Tactical SKU Table */}
-          <div>
-            <h3 className="font-bold text-md mb-4 dark:text-white">
-              Tactical SKU Performance - Gap to Goal
-            </h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="dark:border-gray-700">
-                    <TableHead className="dark:text-gray-400">
-                      Product
-                    </TableHead>
-                    <TableHead className="text-right w-[150px] dark:text-gray-400">
-                      Target
-                    </TableHead>
-                    <TableHead className="text-right w-[150px] dark:text-gray-400">
-                      Achieved
-                    </TableHead>
-                    <TableHead className="w-[200px] pl-8 dark:text-gray-400">
-                      Gap
-                    </TableHead>
-                    <TableHead className="text-right dark:text-gray-400">
-                      Status
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.skuPerformance.map((sku, idx) => (
-                    <TableRow key={idx} className="dark:border-gray-700">
-                      <TableCell className="font-medium dark:text-gray-200">
-                        {sku.product}
-                      </TableCell>
-                      <TableCell className="text-right dark:text-gray-300">
-                        {formatCurrency(sku.target)}
-                      </TableCell>
-                      <TableCell className="text-right dark:text-gray-300">
-                        {formatCurrency(sku.achieved)}
-                      </TableCell>
-                      <TableCell className="pl-8">
-                        <GapVisualizer gap={sku.gap} percent={sku.gapPercent} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold text-white ${
-                            sku.status === "Behind"
-                              ? "bg-red-500"
-                              : sku.status === "On Track"
-                              ? "bg-black dark:bg-white dark:text-black"
-                              : "bg-yellow-500"
-                          }`}
-                        >
-                          {sku.status}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          {/* Achievement Trend Chart */}
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={data.trend}
+                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="fillAchieved" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f0f0f0"
+                  className="dark:stroke-gray-700"
+                />
+                <XAxis
+                  dataKey="month"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: "#888" }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: "#888" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1f2937",
+                    border: "none",
+                    color: "#fff",
+                  }}
+                />
+                <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="achieved"
+                  name="Achieved"
+                  stroke="#3b82f6"
+                  fill="url(#fillAchieved)"
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="target"
+                  name="Target"
+                  stroke="#000000"
+                  fill="none"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  className="dark:stroke-gray-400"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      {/* ROW 4: SALES BY PRODUCT & SUPPLIER */}
+      {/* SALES BY PRODUCT & SUPPLIER */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sales by Product */}
         <Card className="dark:bg-gray-800 dark:border-gray-700">
@@ -576,7 +421,8 @@ export default function SalesmanDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[350px] w-full">
+            {/* CSS Override for Bar Color in Dark Mode */}
+            <div className="h-[350px] w-full [&_.recharts-bar-rectangle]:dark:fill-white">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={data.topProducts}
@@ -614,7 +460,6 @@ export default function SalesmanDashboard() {
                     fill="#000000"
                     radius={[0, 0, 0, 0]}
                     barSize={24}
-                    className="dark:fill-white"
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -631,7 +476,8 @@ export default function SalesmanDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[350px] w-full">
+            {/* CSS Override for Bar Color in Dark Mode */}
+            <div className="h-[350px] w-full [&_.recharts-bar-rectangle]:dark:fill-white">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={data.supplierSales}
@@ -667,7 +513,6 @@ export default function SalesmanDashboard() {
                     fill="#000000"
                     radius={[0, 0, 0, 0]}
                     barSize={100}
-                    className="dark:fill-white"
                   />
                 </BarChart>
               </ResponsiveContainer>

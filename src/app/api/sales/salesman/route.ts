@@ -2,30 +2,50 @@ import { NextResponse } from "next/server";
 
 const DIRECTUS_URL = process.env.DIRECTUS_URL;
 
-// Helper to fetch
+// Helper to fetch data safely
 async function fetchAll(url: string) {
   try {
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`Directus API Error (${res.status}): ${url}`);
+      return [];
+    }
     const json = await res.json();
     return json.data || [];
   } catch (error) {
-    console.error(`Fetch error for ${url}:`, error);
+    console.error(`Fetch failed for ${url}:`, error);
     return [];
   }
 }
 
-// Helper to get "Jan 2024" format for grouping
+// Helper: Fetch a single item (for Salesman Name)
+async function fetchOne(url: string) {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Helper: Format Date
 function getMonthKey(dateString: string) {
   if (!dateString) return "Unknown";
   const date = new Date(dateString);
   return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
-// Helper to get sortable date value
 function getDateValue(dateString: string) {
   if (!dateString) return 0;
   return new Date(dateString).getTime();
+}
+
+function formatParseDate(dateString: string | null) {
+  if (!dateString) return "N/A";
+  const d = new Date(dateString);
+  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString("en-US");
 }
 
 export async function GET(request: Request) {
@@ -34,21 +54,23 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const salesmanId = searchParams.get("salesmanId");
 
-    // --- 1. GET SALESMEN LIST ---
+    // --- 1. GET SALESMEN LIST (For the Dropdown) ---
     if (type === "salesmen") {
       const salesmen = await fetchAll(
         `${DIRECTUS_URL}/items/salesman?limit=-1`
       );
       const list = salesmen
-        .filter((s: any) => s.isActive)
+        .filter((s: any) => s.isActive) // Ensure only active salesmen are shown
         .map((s: any) => ({ id: s.id, name: s.salesman_name }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
       return NextResponse.json({ success: true, data: list });
     }
 
-    // --- 2. GET DASHBOARD DATA ---
+    // --- 2. GET DASHBOARD DATA (For the Charts & KPIs) ---
     if (type === "dashboard" && salesmanId) {
       const [
+        salesmanInfo, // NEW: Fetch specific salesman info
         invoices,
         invoiceDetails,
         products,
@@ -57,10 +79,10 @@ export async function GET(request: Request) {
         returnTypes,
         suppliers,
         productSupplierMap,
-        // NEW: Fetch Targets from DB
         targets,
         tacticalSkus,
       ] = await Promise.all([
+        fetchOne(`${DIRECTUS_URL}/items/salesman/${salesmanId}`),
         fetchAll(
           `${DIRECTUS_URL}/items/sales_invoice?filter[salesman_id][_eq]=${salesmanId}&limit=-1`
         ),
@@ -73,7 +95,6 @@ export async function GET(request: Request) {
         fetchAll(`${DIRECTUS_URL}/items/sales_return_type?limit=-1`),
         fetchAll(`${DIRECTUS_URL}/items/suppliers?limit=-1`),
         fetchAll(`${DIRECTUS_URL}/items/product_per_supplier?limit=-1`),
-        // REAL TARGET DATA
         fetchAll(
           `${DIRECTUS_URL}/items/salesman_target_setting?filter[salesman_id][_eq]=${salesmanId}&sort=-date_range_from&limit=12`
         ),
@@ -82,18 +103,16 @@ export async function GET(request: Request) {
         ),
       ]);
 
-      // --- 1. PROCESS TREND (Target vs Actual) ---
-      // We will group everything by Month-Year
+      // --- PROCESS TREND ---
       const trendMap = new Map<
         string,
         { dateVal: number; month: string; target: number; achieved: number }
       >();
 
-      // A. Process Targets (Real Data)
+      // Process Targets
       targets.forEach((t: any) => {
         if (!t.date_range_from) return;
         const monthKey = getMonthKey(t.date_range_from);
-
         if (!trendMap.has(monthKey)) {
           trendMap.set(monthKey, {
             dateVal: getDateValue(t.date_range_from),
@@ -102,17 +121,13 @@ export async function GET(request: Request) {
             achieved: 0,
           });
         }
-        // 'volume' is the target amount based on your schema
-        const targetVal = Number(t.volume) || 0;
-        trendMap.get(monthKey)!.target += targetVal;
+        trendMap.get(monthKey)!.target += Number(t.volume) || 0;
       });
 
-      // B. Process Actual Sales (Invoices)
+      // Process Actual Sales
       invoices.forEach((inv: any) => {
         if (!inv.invoice_date) return;
         const monthKey = getMonthKey(inv.invoice_date);
-
-        // If this month doesn't exist in targets, add it anyway
         if (!trendMap.has(monthKey)) {
           trendMap.set(monthKey, {
             dateVal: getDateValue(inv.invoice_date),
@@ -124,31 +139,27 @@ export async function GET(request: Request) {
         trendMap.get(monthKey)!.achieved += Number(inv.total_amount) || 0;
       });
 
-      // C. Convert to Array & Sort by Date
       const trend = Array.from(trendMap.values())
         .sort((a, b) => a.dateVal - b.dateVal)
-        // Clean up the month label to just "Jan", "Feb" if preferred, or keep "Jan 2025"
         .map((t) => ({
-          month: t.month.split(" ")[0], // Just Month Name for cleaner X-Axis
+          month: t.month.split(" ")[0],
           fullDate: t.month,
           target: t.target,
           achieved: t.achieved,
         }));
 
-      // --- 2. CALCULATE KPI AGGREGATES ---
+      // --- KPI AGGREGATES ---
       const totalOrders = invoices.length;
       const orderValue = invoices.reduce(
         (sum: number, inv: any) => sum + (Number(inv.total_amount) || 0),
         0
       );
       const pendingOrders = invoices.filter((inv: any) => !inv.isPosted).length;
-
-      // Calculate Total Target (Sum of all visible targets in trend)
-      const totalTarget = trend.reduce((sum, t) => sum + t.target, 0) || 1; // Avoid 0 div
+      const totalTarget = trend.reduce((sum, t) => sum + t.target, 0) || 1;
       const gap = totalTarget - orderValue;
       const percentAchieved = Math.round((orderValue / totalTarget) * 100);
 
-      // --- 3. PRODUCTS & SUPPLIERS LOGIC ---
+      // --- PRODUCTS & SUPPLIERS ---
       const productMap = new Map(
         products.map((p: any) => [p.product_id, p.product_name])
       );
@@ -172,10 +183,12 @@ export async function GET(request: Request) {
       const validInvoiceIds = new Set(invoices.map((i: any) => i.invoice_id));
 
       invoiceDetails.forEach((det: any) => {
+        // Handle invoice_no being object or string ID
         const invId =
           typeof det.invoice_no === "object"
-            ? det.invoice_no.id
+            ? det.invoice_no?.id
             : det.invoice_no;
+
         if (validInvoiceIds.has(invId)) {
           const pName = String(
             productMap.get(det.product_id) || `Product ${det.product_id}`
@@ -212,7 +225,7 @@ export async function GET(request: Request) {
         .sort((a, b) => b.value - a.value)
         .slice(0, 5);
 
-      // --- 4. RETURNS LOGIC ---
+      // --- RETURNS ---
       const returnTypeMap = new Map(
         returnTypes.map((t: any) => [t.type_id, t.type_name])
       );
@@ -222,12 +235,18 @@ export async function GET(request: Request) {
       );
 
       for (const det of returnDetails) {
-        if (validReturnNumbers.has(det.return_no)) {
+        // Handle return_no logic safely
+        const returnId =
+          typeof det.return_no === "object"
+            ? det.return_no?.return_number
+            : det.return_no;
+
+        if (validReturnNumbers.has(returnId)) {
           const pName = productMap.get(det.product_id) || "Unknown";
           const reason =
             returnTypeMap.get(det.sales_return_type_id) || "Unspecified";
           returnHistory.push({
-            id: det.return_no,
+            id: returnId,
             product: pName,
             date: formatParseDate(det.created_at),
             quantity: Number(det.quantity),
@@ -240,17 +259,8 @@ export async function GET(request: Request) {
           new Date(b.date).getTime() - new Date(a.date).getTime()
       );
 
-      // --- 5. TACTICAL SKU (Real Data) ---
-      // Assuming tactical_sku table has: product_id, target_amount
-      const skuPerformance: Array<{
-        product: string;
-        target: number;
-        achieved: number;
-        gap: number;
-        gapPercent: number;
-        status: string;
-      }> = [];
-      // If no tactical skus set, use Top 5 products as fallback
+      // --- TACTICAL SKU ---
+      const skuPerformance: any[] = [];
       const skuSource =
         tacticalSkus.length > 0 ? tacticalSkus : topProducts.slice(0, 5);
 
@@ -260,15 +270,13 @@ export async function GET(request: Request) {
           achieved = 0;
 
         if (tacticalSkus.length > 0) {
-          // Real Tactical SKU Logic
           pName = String(productMap.get(item.product_id) || "Unknown SKU");
           target = Number(item.target_amount) || 1000;
           achieved = productSales.get(pName)?.value || 0;
         } else {
-          // Fallback Logic
           pName = item.name;
           achieved = item.value;
-          target = Math.round(achieved * 1.1); // Mock 10% higher target
+          target = Math.round(achieved * 1.1);
         }
 
         const gap = target - achieved;
@@ -292,7 +300,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: true,
         data: {
-          salesmanName: "",
+          // FIXED: Populate Name
+          salesmanName: salesmanInfo?.salesman_name || "Salesman",
           kpi: {
             totalOrders,
             orderValue,
@@ -306,7 +315,7 @@ export async function GET(request: Request) {
             gap,
             percent: percentAchieved,
           },
-          trend, // REAL TREND DATA
+          trend,
           skuPerformance,
           topProducts,
           supplierSales,
@@ -314,17 +323,16 @@ export async function GET(request: Request) {
         },
       });
     }
-    return NextResponse.json({ success: false, error: "Invalid Request" });
+
+    return NextResponse.json(
+      { success: false, error: "Invalid Request" },
+      { status: 400 }
+    );
   } catch (error: any) {
+    console.error("API Route Error:", error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
     );
   }
-}
-
-function formatParseDate(dateString: string | null) {
-  if (!dateString) return "N/A";
-  const d = new Date(dateString);
-  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString("en-US");
 }
