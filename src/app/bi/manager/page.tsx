@@ -21,7 +21,6 @@ import {
   AlertCircle,
   Activity,
   Truck,
-  LayoutGrid,
   Award,
   ShoppingBag,
   ChevronLeft,
@@ -29,6 +28,9 @@ import {
   ChevronDown,
   Users,
   TrendingUp,
+  Target,
+  BadgeDollarSign,
+  Briefcase,
 } from "lucide-react";
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
 import {
@@ -40,7 +42,6 @@ import {
 } from "date-fns";
 import { DateRange } from "react-day-picker";
 
-import type { DashboardFilters } from "@/types";
 import {
   Card,
   CardContent,
@@ -62,13 +63,13 @@ interface DashboardData {
   division: string;
   goodStock: {
     velocityRate: number;
-    status: "Healthy" | "Warning" | "Critical";
+    status: string;
     totalOutflow: number;
     totalInflow: number;
   };
   badStock: {
     accumulated: number;
-    status: "Normal" | "High";
+    status: string;
     totalInflow: number;
   };
   trendData: any[];
@@ -172,10 +173,6 @@ export default function ManagerDashboard() {
         const res = await fetch(`/api/sales/manager?${query.toString()}`);
 
         if (!res.ok) {
-          if (res.status === 404)
-            throw new Error(
-              "API Route not found. Check /api/sales/manager/route.ts exists."
-            );
           throw new Error(`Server Error: ${res.status}`);
         }
 
@@ -184,7 +181,7 @@ export default function ManagerDashboard() {
 
         setData(json);
       } catch (err: any) {
-        console.error("Error:", err);
+        console.error("Dashboard fetch error:", err);
         setErrorMsg(err.message || "Failed to load dashboard data");
       } finally {
         setLoading(false);
@@ -204,6 +201,12 @@ export default function ManagerDashboard() {
       currency: "PHP",
       minimumFractionDigits: 0,
     }).format(val);
+
+  const grandTotalSales =
+    data?.supplierBreakdown?.reduce(
+      (sum: number, sup: any) => sum + (sup.totalSales || 0),
+      0
+    ) ?? 0;
 
   const totalSuppliers = data?.supplierBreakdown?.length || 0;
   const totalSupplierPages = Math.ceil(totalSuppliers / ITEMS_PER_PAGE);
@@ -238,45 +241,55 @@ export default function ManagerDashboard() {
   };
 
   return (
-    // UPDATED: Changed 'max-w-7xl' to 'w-full' to allow full expansion
-    // Added 'dark:bg-gray-900' for better dark mode background control
-    <div className="p-6 w-full mx-auto space-y-6 min-h-screen relative dark:bg-gray-900 transition-all duration-300">
+    <div className="p-6 w-full mx-auto space-y-6 min-h-screen relative bg-slate-50 dark:bg-gray-950 transition-all duration-300">
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 backdrop-blur-[1px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black dark:border-white"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-white"></div>
         </div>
       )}
 
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Inventory & Sales Manager
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          Tracking stock velocity, returns, and sales performance
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white">
+            Manager Dashboard
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 font-medium">
+            Real-time supply chain & sales intelligence
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1.5 rounded-lg border shadow-sm">
+          <div className="flex items-center gap-2 px-3 py-1 border-r">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <span className="text-sm font-bold">
+              {data?.goodStock.velocityRate}% Velocity
+            </span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1">
+            <AlertCircle className="h-4 w-4 text-red-500" />
+            <span className="text-sm font-bold">
+              {data?.badStock.accumulated.toLocaleString()} Returns
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* FILTERS */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all duration-300">
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
         <div
           className={
             timePeriod === "custom" ? "md:col-span-3" : "md:col-span-6"
           }
         >
-          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
-            Division
+          <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 block">
+            Select Division
           </label>
-          <Select value={activeTab} onValueChange={(val) => setActiveTab(val)}>
-            <SelectTrigger className="w-full h-12 dark:bg-gray-900 dark:border-gray-700 dark:text-white">
-              <SelectValue placeholder="Select Division" />
+          <Select value={activeTab} onValueChange={setActiveTab}>
+            <SelectTrigger className="w-full h-11 dark:bg-gray-800 dark:border-gray-700 font-semibold">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
               {DIVISIONS.map((div) => (
-                <SelectItem
-                  key={div}
-                  value={div}
-                  className="dark:text-gray-200 dark:focus:bg-gray-700"
-                >
+                <SelectItem key={div} value={div} className="font-medium">
                   {div}
                 </SelectItem>
               ))}
@@ -289,37 +302,29 @@ export default function ManagerDashboard() {
             timePeriod === "custom" ? "md:col-span-3" : "md:col-span-6"
           }
         >
-          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
-            Time Period
+          <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 block">
+            Timeframe
           </label>
           <Select value={timePeriod} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-full h-12 dark:bg-gray-900 dark:border-gray-700 dark:text-white">
-              <SelectValue placeholder="Select Period" />
+            <SelectTrigger className="w-full h-11 dark:bg-gray-800 dark:border-gray-700 font-semibold">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
-              <SelectItem value="today" className="dark:text-gray-200">
-                Today
-              </SelectItem>
-              <SelectItem value="thisWeek" className="dark:text-gray-200">
-                This Week
-              </SelectItem>
-              <SelectItem value="thisMonth" className="dark:text-gray-200">
-                This Month
-              </SelectItem>
-              <SelectItem value="custom" className="dark:text-gray-200">
-                Custom Range
-              </SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="thisWeek">This Week</SelectItem>
+              <SelectItem value="thisMonth">This Month</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {timePeriod === "custom" && (
-          <div className="md:col-span-6 animate-in fade-in slide-in-from-left-4 duration-300">
-            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1 block">
+          <div className="md:col-span-6">
+            <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 block">
               Custom Date Range
             </label>
             <DatePickerWithRange
-              className="w-full dark:bg-gray-900 dark:border-gray-700 dark:text-white"
+              className="w-full dark:bg-gray-800 dark:border-gray-700"
               date={date}
               setDate={handleDateSelect}
             />
@@ -328,305 +333,249 @@ export default function ManagerDashboard() {
       </div>
 
       {errorMsg ? (
-        <div className="p-8 text-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-900">
-          <p className="font-semibold">Error Loading Dashboard</p>{" "}
-          <p className="text-sm">{errorMsg}</p>
+        <div className="p-8 text-center text-red-500 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100">
+          <p className="font-bold">Execution Error</p>
+          <p className="text-sm opacity-80">{errorMsg}</p>
         </div>
       ) : !data ? (
-        <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
-          <span className="text-gray-400 dark:text-gray-500">
-            Loading metrics...
+        <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800">
+          <span className="text-gray-400 font-medium animate-pulse">
+            Syncing data streams...
           </span>
         </div>
       ) : (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500 mt-6">
-          {/* KPI CARDS */}
+        <div className="space-y-6">
+          {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="shadow-sm border-emerald-100 dark:border-emerald-900 dark:bg-gray-800">
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900 overflow-hidden group">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg">
-                      <PackageCheck className="text-emerald-600 dark:text-emerald-400 h-5 w-5" />
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl group-hover:scale-110 transition-transform">
+                      <PackageCheck className="text-blue-600 dark:text-blue-400 h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                         Good Stock Velocity
                       </p>
-                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      <h3 className="text-3xl font-black text-gray-900 dark:text-white leading-none mt-1">
                         {data.goodStock.velocityRate}%
                       </h3>
                     </div>
                   </div>
-                  <span
-                    className={`px-2 py-1 text-xs font-bold rounded ${
-                      data.goodStock.status.includes("Healthy") ||
-                      data.goodStock.status.includes("Fast")
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
-                    }`}
-                  >
+                  <span className="px-3 py-1 text-[10px] font-black uppercase rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                     {data.goodStock.status}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 mb-4">
+                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 mb-4">
                   <div
-                    className="bg-gray-900 dark:bg-white h-2 rounded-full"
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
                     style={{ width: `${data.goodStock.velocityRate}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <span>
+                <div className="flex justify-between text-xs font-bold uppercase tracking-tighter">
+                  <span className="text-gray-400">
                     Outflow:{" "}
-                    <strong className="dark:text-gray-200">
+                    <span className="text-gray-900 dark:text-white">
                       {data.goodStock.totalOutflow.toLocaleString()}
-                    </strong>
+                    </span>
                   </span>
-                  <span>
-                    Total Moved:{" "}
-                    <strong className="dark:text-gray-200">
+                  <span className="text-gray-400">
+                    Total:{" "}
+                    <span className="text-gray-900 dark:text-white">
                       {data.goodStock.totalInflow.toLocaleString()}
-                    </strong>
+                    </span>
                   </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-red-100 dark:border-red-900 dark:bg-gray-800">
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900 overflow-hidden group">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-red-100 dark:bg-red-900/50 rounded-lg">
-                      <AlertCircle className="text-red-600 dark:text-red-400 h-5 w-5" />
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl group-hover:scale-110 transition-transform">
+                      <AlertCircle className="text-red-600 dark:text-red-400 h-6 w-6" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                        Bad Stock Inflow
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        Returns / Bad Stock
                       </p>
-                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      <h3 className="text-3xl font-black text-gray-900 dark:text-white leading-none mt-1">
                         {data.badStock.accumulated.toLocaleString()}
                       </h3>
                     </div>
                   </div>
-                  <span
-                    className={`px-2 py-1 text-xs font-bold rounded ${
-                      data.badStock.status === "Normal"
-                        ? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"
-                    }`}
-                  >
+                  <span className="px-3 py-1 text-[10px] font-black uppercase rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                     {data.badStock.status}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 mb-4">
+                <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 mb-4">
                   <div
-                    className="bg-red-600 h-2 rounded-full"
+                    className="bg-red-600 h-2 rounded-full transition-all duration-1000"
                     style={{ width: `${calculateBadStockRate()}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <span>
+                <div className="flex justify-between text-xs font-bold uppercase tracking-tighter">
+                  <span className="text-gray-400">
                     Accumulated:{" "}
-                    <strong className="dark:text-gray-200">
+                    <span className="text-gray-900 dark:text-white">
                       {data.badStock.accumulated.toLocaleString()}
-                    </strong>
+                    </span>
                   </span>
-                  <span>
-                    Returns Volume:{" "}
-                    <strong className="text-red-600 dark:text-red-400">
-                      +{data.badStock.totalInflow.toLocaleString()}
-                    </strong>
+                  <span className="text-red-600">
+                    New Returns: +{data.badStock.totalInflow.toLocaleString()}
                   </span>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* TREND CHART */}
-          <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
+          {/* Trend Chart */}
+          <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 dark:text-white">
-                <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />{" "}
-                Stock Movement Trend (Historical)
+              <CardTitle className="flex items-center gap-2 text-lg font-bold">
+                <Activity className="h-5 w-5 text-blue-600" />
+                Operational Movement Trend
               </CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={data.trendData}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
                   <defs>
                     <linearGradient id="fillGood" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#18181b" stopOpacity={0.8} />
-                      <stop
-                        offset="95%"
-                        stopColor="#18181b"
-                        stopOpacity={0.1}
-                      />
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="fillBad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                      <stop
-                        offset="95%"
-                        stopColor="#ef4444"
-                        stopOpacity={0.1}
-                      />
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="#f0f0f0"
-                    className="dark:stroke-gray-700"
+                    stroke="#e2e8f0"
                   />
                   <XAxis
                     dataKey="date"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 12, fill: "#888" }}
-                    minTickGap={30}
-                    tickMargin={10}
+                    tick={{ fontSize: 10, fontWeight: 700 }}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 12, fill: "#888" }}
-                    domain={[0, "auto"]}
+                    tick={{ fontSize: 10, fontWeight: 700 }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1f2937",
+                      borderRadius: "12px",
                       border: "none",
-                      color: "#fff",
+                      boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
                     }}
-                    itemStyle={{ color: "#fff" }}
                   />
-                  <Legend verticalAlign="top" height={36} />
+                  <Legend verticalAlign="top" align="right" iconType="circle" />
                   <Area
                     type="monotone"
                     dataKey="goodStockOutflow"
-                    name="Good Stock Out"
-                    stroke="#18181b"
+                    name="Inventory Outflow"
+                    stroke="#2563eb"
+                    strokeWidth={3}
                     fill="url(#fillGood)"
-                    strokeWidth={2}
-                    stackId="a"
-                    className="dark:stroke-white dark:fill-white/20"
                   />
                   <Area
                     type="monotone"
                     dataKey="badStockInflow"
-                    name="Bad Stock In"
+                    name="Return Inflow"
                     stroke="#ef4444"
+                    strokeWidth={3}
                     fill="url(#fillBad)"
-                    strokeWidth={2}
-                    stackId="a"
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
+          {/* Sales Visualization Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="flex flex-col shadow-sm dark:bg-gray-800 dark:border-gray-700">
-              <CardHeader className="items-center pb-0">
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                  <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />{" "}
-                  Sales per Supplier
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-blue-500" />
+                  Sales Contribution by Supplier
                 </CardTitle>
-                <CardDescription className="dark:text-gray-400">
-                  Top 10 Suppliers
-                </CardDescription>
               </CardHeader>
-              <CardContent className="flex-1 pb-0 min-h-[300px]">
+              <CardContent className="h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={data.salesBySupplier}
                       dataKey="value"
                       nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
+                      innerRadius={80}
+                      outerRadius={110}
+                      paddingAngle={5}
                     >
-                      {data.salesBySupplier.map((entry, index) => (
+                      {data.salesBySupplier.map((_, index) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={CHART_COLORS[index % CHART_COLORS.length]}
                         />
                       ))}
                     </Pie>
-                    <Tooltip
-                      formatter={(value: number) => formatPHP(value)}
-                      contentStyle={{
-                        backgroundColor: "#1f2937",
-                        borderRadius: "8px",
-                        border: "none",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                        color: "#fff",
-                      }}
+                    <Tooltip formatter={(value: number) => formatPHP(value)} />
+                    <Legend
+                      iconType="rect"
+                      layout="vertical"
+                      verticalAlign="middle"
+                      align="right"
                     />
-                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
-              <CardFooter className="flex-col gap-2 text-sm pt-4 dark:text-gray-300">
-                <div className="flex items-center gap-2 leading-none font-medium">
-                  {data.salesBySupplier.length > 0 ? (
-                    <>Top Supplier: {data.salesBySupplier[0]?.name}</>
-                  ) : (
-                    "No Data Available"
-                  )}
-                  <TrendingUp className="h-4 w-4" />
-                </div>
-              </CardFooter>
             </Card>
 
-            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />{" "}
-                  Sales per Salesman
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <Users className="h-5 w-5 text-purple-500" />
+                  Salesman Leaderboard
                 </CardTitle>
               </CardHeader>
-              <CardContent className="h-[350px]">
+              <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={data.salesBySalesman}
                     layout="vertical"
-                    margin={{ left: 40 }}
+                    margin={{ left: 20 }}
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
                       horizontal={false}
-                      stroke="#f0f0f0"
-                      className="dark:stroke-gray-700"
+                      stroke="#f1f5f9"
                     />
                     <XAxis type="number" hide />
                     <YAxis
                       dataKey="name"
                       type="category"
                       width={100}
-                      tick={{ fontSize: 11, fill: "#888" }}
+                      tick={{ fontSize: 11, fontWeight: 600 }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip
-                      cursor={{ fill: "transparent" }}
+                      cursor={{ fill: "#f8fafc" }}
                       formatter={(value: number) => formatPHP(value)}
-                      contentStyle={{
-                        backgroundColor: "#1f2937",
-                        border: "none",
-                        color: "#fff",
-                      }}
                     />
                     <Bar
                       dataKey="value"
-                      fill="#000000" // Fallback
-                      className="fill-black dark:fill-white" // CSS Class for dark mode switch
-                      radius={[0, 0, 0, 0]}
+                      fill="#0f172a"
+                      className="dark:fill-blue-500"
+                      radius={[0, 10, 10, 0]}
                       barSize={20}
                     />
                   </BarChart>
@@ -635,49 +584,247 @@ export default function ManagerDashboard() {
             </Card>
           </div>
 
+          {/* Detailed Supplier Breakdown - REDESIGNED */}
+          <Card className="shadow-xl border-none overflow-hidden bg-white dark:bg-gray-900">
+            <div className="bg-slate-900 dark:bg-black p-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <Briefcase className="h-5 w-5 text-blue-400" />
+                    Detailed Supplier Breakdown
+                  </h2>
+                  <p className="text-slate-400 text-sm font-medium">
+                    Drilldown by partner & representative
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full md:w-auto">
+                  <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
+                      Grand Total Sales
+                    </p>
+                    <p className="text-lg font-black text-emerald-400 leading-none">
+                      {formatPHP(grandTotalSales)}
+                    </p>
+                  </div>
+                  <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
+                      Supplier Count
+                    </p>
+                    <p className="text-lg font-black text-blue-400 leading-none">
+                      {totalSuppliers}
+                    </p>
+                  </div>
+                  <div className="hidden md:block bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
+                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
+                      Avg Performance
+                    </p>
+                    <p className="text-lg font-black text-purple-400 leading-none">
+                      {formatPHP(
+                        totalSuppliers > 0
+                          ? grandTotalSales / totalSuppliers
+                          : 0
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <CardContent className="p-0">
+              {paginatedSuppliers.length === 0 ? (
+                <div className="py-20 text-center text-gray-400 italic">
+                  No supplier data detected.
+                </div>
+              ) : (
+                paginatedSuppliers.map((supplier: any) => {
+                  const percentOfTotal =
+                    grandTotalSales > 0
+                      ? (supplier.totalSales / grandTotalSales) * 100
+                      : 0;
+                  const isExpanded = expandedSupplier === supplier.id;
+
+                  return (
+                    <div
+                      key={supplier.id}
+                      className="group border-b border-gray-100 dark:border-gray-800 last:border-0"
+                    >
+                      <button
+                        onClick={() => toggleSupplier(supplier.id)}
+                        className={`w-full flex flex-col md:flex-row md:items-center justify-between p-5 transition-all ${
+                          isExpanded
+                            ? "bg-blue-50/30 dark:bg-blue-900/10"
+                            : "hover:bg-slate-50 dark:hover:bg-gray-800/40"
+                        }`}
+                      >
+                        <div className="flex flex-col items-start gap-1.5 w-full md:w-2/5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-blue-600" />
+                            <span className="font-black text-slate-800 dark:text-slate-100 uppercase text-sm tracking-tight">
+                              {supplier.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 w-full max-w-[250px]">
+                            <div className="h-1.5 flex-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-600 rounded-full"
+                                style={{ width: `${percentOfTotal}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-black text-blue-600 italic">
+                              {percentOfTotal.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between md:justify-end gap-10 mt-4 md:mt-0 w-full md:w-auto">
+                          <div className="text-left md:text-right">
+                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                              Revenue
+                            </p>
+                            <p className="text-xl font-black text-slate-900 dark:text-white">
+                              {formatPHP(supplier.totalSales)}
+                            </p>
+                          </div>
+                          <div
+                            className={`p-2 rounded-lg transition-all ${
+                              isExpanded
+                                ? "bg-blue-600 text-white shadow-lg"
+                                : "bg-slate-100 dark:bg-gray-800 text-slate-400 group-hover:bg-slate-200"
+                            }`}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-5 w-5" />
+                            ) : (
+                              <ChevronRight className="h-5 w-5" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="bg-white dark:bg-black/40 px-6 pb-6 animate-in slide-in-from-top-4 duration-300">
+                          <div className="rounded-xl border border-slate-200 dark:border-gray-800 overflow-hidden shadow-inner">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-50 dark:bg-gray-900 text-slate-500 font-black text-[10px] uppercase tracking-widest">
+                                <tr>
+                                  <th className="py-4 px-5 text-left">
+                                    Representative
+                                  </th>
+                                  <th className="py-4 px-5 text-right">
+                                    Contribution
+                                  </th>
+                                  <th className="py-4 px-5 text-right w-24">
+                                    Share
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
+                                {supplier.salesmen.map(
+                                  (rep: any, idx: number) => (
+                                    <tr
+                                      key={idx}
+                                      className="hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors"
+                                    >
+                                      <td className="py-4 px-5 font-bold text-slate-700 dark:text-slate-300">
+                                        {rep.name}
+                                      </td>
+                                      <td className="py-4 px-5 text-right font-black text-slate-900 dark:text-white">
+                                        {formatPHP(rep.amount)}
+                                      </td>
+                                      <td className="py-4 px-5 text-right">
+                                        <span className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-[10px] font-black text-blue-600">
+                                          {rep.percent}%
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  )
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+
+              {totalSupplierPages > 1 && (
+                <div className="p-5 flex items-center justify-between bg-slate-50 dark:bg-gray-900 border-t dark:border-gray-800">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Page {supplierPage} / {totalSupplierPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="font-bold px-4"
+                      onClick={() => setSupplierPage((p) => p - 1)}
+                      disabled={supplierPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="font-bold px-4"
+                      onClick={() => setSupplierPage((p) => p + 1)}
+                      disabled={supplierPage === totalSupplierPages}
+                    >
+                      Next <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pareto Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* TOP PRODUCTS */}
-            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                  <ShoppingBag className="h-5 w-5 text-orange-500" /> Top
-                  Products
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
+              <CardHeader className="flex flex-row items-center justify-between bg-orange-50/50 dark:bg-orange-900/10">
+                <CardTitle className="text-md font-bold flex items-center gap-2">
+                  <ShoppingBag className="h-4 w-4 text-orange-500" />
+                  Top Performing Products
                 </CardTitle>
                 <div className="flex gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 dark:hover:bg-gray-700"
+                    className="h-8 w-8"
                     onClick={() => setProductPage((p) => Math.max(1, p - 1))}
                     disabled={productPage === 1}
                   >
-                    <ChevronLeft className="h-4 w-4 dark:text-white" />
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 dark:hover:bg-gray-700"
+                    className="h-8 w-8"
                     onClick={() =>
                       setProductPage((p) => Math.min(totalProductPages, p + 1))
                     }
                     disabled={productPage === totalProductPages}
                   >
-                    <ChevronRight className="h-4 w-4 dark:text-white" />
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
+              <CardContent className="pt-4">
+                <div className="space-y-3">
                   {paginatedProducts.map((item: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between text-sm border-b border-gray-50 dark:border-gray-700 pb-2 last:border-0"
+                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
                     >
-                      <span className="text-gray-700 dark:text-gray-300 w-2/3 truncate">
-                        {(productPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}.{" "}
+                      <span className="text-gray-600 dark:text-gray-400 font-medium truncate w-2/3">
+                        <span className="text-gray-400 mr-2">
+                          {(productPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}
+                        </span>
                         {item.name}
                       </span>
-                      <span className="font-bold text-gray-900 dark:text-white">
+                      <span className="font-black text-gray-900 dark:text-white">
                         {formatPHP(item.value)}
                       </span>
                     </div>
@@ -686,26 +833,26 @@ export default function ManagerDashboard() {
               </CardContent>
             </Card>
 
-            {/* TOP CUSTOMERS */}
-            <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2 dark:text-white">
-                  <Award className="h-5 w-5 text-yellow-500" /> Top Customers
+            <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
+              <CardHeader className="flex flex-row items-center justify-between bg-yellow-50/50 dark:bg-yellow-900/10">
+                <CardTitle className="text-md font-bold flex items-center gap-2">
+                  <Award className="h-4 w-4 text-yellow-500" />
+                  V.I.P. Customers
                 </CardTitle>
                 <div className="flex gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 dark:hover:bg-gray-700"
+                    className="h-8 w-8"
                     onClick={() => setCustomerPage((p) => Math.max(1, p - 1))}
                     disabled={customerPage === 1}
                   >
-                    <ChevronLeft className="h-4 w-4 dark:text-white" />
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 dark:hover:bg-gray-700"
+                    className="h-8 w-8"
                     onClick={() =>
                       setCustomerPage((p) =>
                         Math.min(totalCustomerPages, p + 1)
@@ -713,22 +860,24 @@ export default function ManagerDashboard() {
                     }
                     disabled={customerPage === totalCustomerPages}
                   >
-                    <ChevronRight className="h-4 w-4 dark:text-white" />
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
+              <CardContent className="pt-4">
+                <div className="space-y-3">
                   {paginatedCustomers.map((item: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between text-sm border-b border-gray-50 dark:border-gray-700 pb-2 last:border-0"
+                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
                     >
-                      <span className="text-gray-700 dark:text-gray-300 w-2/3 truncate">
-                        {(customerPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}.{" "}
+                      <span className="text-gray-600 dark:text-gray-400 font-medium truncate w-2/3">
+                        <span className="text-gray-400 mr-2">
+                          {(customerPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}
+                        </span>
                         {item.name}
                       </span>
-                      <span className="font-bold text-gray-900 dark:text-white">
+                      <span className="font-black text-gray-900 dark:text-white">
                         {formatPHP(item.value)}
                       </span>
                     </div>
@@ -737,153 +886,6 @@ export default function ManagerDashboard() {
               </CardContent>
             </Card>
           </div>
-
-          <Card className="shadow-sm dark:bg-gray-800 dark:border-gray-700">
-            <CardHeader className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700 flex flex-row items-center justify-between">
-              <CardTitle className="dark:text-white">
-                Detailed Supplier Breakdown
-              </CardTitle>
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">
-                Showing{" "}
-                {Math.min(
-                  (supplierPage - 1) * ITEMS_PER_PAGE + 1,
-                  totalSuppliers
-                )}
-                -{Math.min(supplierPage * ITEMS_PER_PAGE, totalSuppliers)} of{" "}
-                {totalSuppliers}
-              </span>
-            </CardHeader>
-            <CardContent className="p-0">
-              {paginatedSuppliers.map((supplier: any) => (
-                <div
-                  key={supplier.id}
-                  className="border-b border-gray-100 dark:border-gray-700 last:border-0"
-                >
-                  <button
-                    onClick={() => toggleSupplier(supplier.id)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    <span className="font-medium text-gray-800 dark:text-gray-200">
-                      {supplier.name}
-                    </span>
-                    <div className="flex items-center gap-4">
-                      <span className="font-bold text-gray-900 dark:text-white">
-                        {formatPHP(supplier.totalSales)}
-                      </span>
-                      {expandedSupplier === supplier.id ? (
-                        <ChevronDown className="h-4 w-4 dark:text-gray-400" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 dark:text-gray-400" />
-                      )}
-                    </div>
-                  </button>
-                  {expandedSupplier === supplier.id && (
-                    <div className="bg-gray-50/50 dark:bg-gray-900/50 p-4">
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {supplier.salesmen.map((rep: any, idx: number) => (
-                            <tr
-                              key={idx}
-                              className="border-b border-gray-100 dark:border-gray-700 last:border-0"
-                            >
-                              <td className="py-2 text-gray-600 dark:text-gray-400 pl-4">
-                                {rep.name}
-                              </td>
-                              <td className="py-2 text-right font-medium text-gray-900 dark:text-gray-200">
-                                {formatPHP(rep.amount)}
-                              </td>
-                              <td className="py-2 text-right text-gray-500 dark:text-gray-500 pr-4">
-                                {rep.percent}%
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {totalSuppliers > ITEMS_PER_PAGE && (
-                <div className="p-4 flex items-center justify-between border-t bg-gray-50 dark:bg-gray-900/50 dark:border-gray-700">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSupplierPage((p) => p - 1)}
-                    disabled={supplierPage === 1}
-                    className="flex items-center gap-1 dark:bg-gray-800 dark:text-white dark:border-gray-700"
-                  >
-                    <ChevronLeft className="h-4 w-4" /> Prev
-                  </Button>
-                  <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                    Page {supplierPage} of {totalSupplierPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSupplierPage((p) => p + 1)}
-                    disabled={supplierPage === totalSupplierPages}
-                    className="flex items-center gap-1 dark:bg-gray-800 dark:text-white dark:border-gray-700"
-                  >
-                    Next <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {activeTab === "Overview" && data.divisionBreakdown && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mt-8">
-              <div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
-                <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                  <LayoutGrid className="h-5 w-5 text-blue-600" /> Division
-                  Overview Summary
-                </h3>
-              </div>
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 font-medium">
-                  <tr>
-                    <th className="py-3 px-6">Division</th>
-                    <th className="py-3 px-6 text-center">Velocity</th>
-                    <th className="py-3 px-6 text-right">Good Stock Out</th>
-                    <th className="py-3 px-6 text-right">Bad Stock In</th>
-                    <th className="py-3 px-6 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {data.divisionBreakdown.map((div: any, idx: number) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                    >
-                      <td className="py-3 px-6 font-medium text-gray-900 dark:text-gray-200">
-                        {div.division}
-                      </td>
-                      <td className="py-3 px-6 text-center font-bold text-blue-600 dark:text-blue-400">
-                        {div.goodStock.velocityRate}%
-                      </td>
-                      <td className="py-3 px-6 text-right text-gray-700 dark:text-gray-300">
-                        {div.goodStock.totalOutflow.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-6 text-right text-red-600 dark:text-red-400">
-                        {div.badStock.accumulated.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-6 text-center">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-bold ${
-                            div.goodStock.status === "Healthy"
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400"
-                              : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"
-                          }`}
-                        >
-                          {div.goodStock.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
     </div>

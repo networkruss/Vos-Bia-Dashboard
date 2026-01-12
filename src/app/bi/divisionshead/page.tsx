@@ -246,7 +246,7 @@ export default function DivisionsHeadPage() {
           <Button
             onClick={fetchDashboardData}
             disabled={loading}
-            className="mb-[1px]"
+            className="mb-px"
           >
             {loading ? (
               <RefreshCcw className="w-4 h-4 animate-spin mr-2" />
