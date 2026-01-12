@@ -837,7 +837,7 @@ export default function ManagerDashboard() {
               <CardHeader className="flex flex-row items-center justify-between bg-yellow-50/50 dark:bg-yellow-900/10">
                 <CardTitle className="text-md font-bold flex items-center gap-2">
                   <Award className="h-4 w-4 text-yellow-500" />
-                  V.I.P. Customers
+                  TOP Customers
                 </CardTitle>
                 <div className="flex gap-1">
                   <Button
