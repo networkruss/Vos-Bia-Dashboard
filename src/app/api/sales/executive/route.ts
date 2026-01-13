@@ -10,9 +10,8 @@ import { NextResponse } from "next/server";
  * - FIX: return totals incorrect/negative due to stored negative totals
  */
 
-const RAW_DIRECTUS_URL =
-  process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
-const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, "");
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "";
+const DIRECTUS_BASE = DIRECTUS_URL.replace(/\/+$/, "");
 
 // Optional token support (only if your Directus needs it)
 const DIRECTUS_TOKEN =

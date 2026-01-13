@@ -6,7 +6,7 @@ if (!DIRECTUS_URL) {
   console.error("Missing DIRECTUS_URL in .env.local");
 }
 
-// --- 1. CONFIGURATION RULES (Hardcoded logic habang wala pa sa DB) ---
+// --- 1. CONFIGURATION RULES ---
 const DIVISION_RULES: any = {
   "Dry Goods": {
     brands: [
@@ -118,16 +118,12 @@ const DIVISION_RULES: any = {
     brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
     sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
   },
-  // --- INTERNAL (Abang Mode) ---
-  // Kahit wala ito sa DB division table, dito natin i-dedefine para mabasa ng logic
   Internal: {
     brands: ["Internal", "Office Supplies", "VOS"],
     sections: ["Internal", "Office", "Supplies"],
   },
 };
 
-// IMPORTANT: Ito ang listahan na gagamitin ng Dashboard para mag-loop.
-// Dahil nandito ang "Internal", lalabas ito sa UI kahit 0 pa ang sales.
 const ALL_DIVISIONS = [
   "Dry Goods",
   "Frozen Goods",
@@ -136,7 +132,6 @@ const ALL_DIVISIONS = [
   "Internal",
 ];
 
-// KEYWORDS: Ito ang magfi-filter ng customers habang wala pang 'customer_type' sa DB
 const INTERNAL_CUSTOMER_KEYWORDS = [
   "WALK-IN",
   "WALKIN",
@@ -146,7 +141,7 @@ const INTERNAL_CUSTOMER_KEYWORDS = [
   "OFFICE",
   "INTERNAL",
   "VOS",
-  "USE", // For "Office Use"
+  "USE",
 ];
 
 // --- HELPERS ---
@@ -155,7 +150,7 @@ async function fetchAll<T = any>(
   params: string = ""
 ): Promise<T[]> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout prevents early aborts
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
     const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
     const res = await fetch(url, {
@@ -177,9 +172,8 @@ function normalizeDate(d: string | null) {
 
 function getSafeId(val: any): string {
   if (val === null || val === undefined) return "";
-  if (typeof val === "object" && val !== null) {
+  if (typeof val === "object" && val !== null)
     return val.id ? String(val.id) : "";
-  }
   return String(val);
 }
 
@@ -266,17 +260,12 @@ export async function GET(request: Request) {
     pps.forEach((p: any) => {
       const pId = getSafeId(p.product_id);
       const sId = getSafeId(p.supplier_id);
-      if (pId && sId) {
-        productToSupplierMap.set(pId, sId);
-      }
+      if (pId && sId) productToSupplierMap.set(pId, sId);
     });
 
     const productMap = new Map();
     products.forEach((p: any) => {
       const pId = getSafeId(p.product_id);
-      const stockCount =
-        Number(p.stock) || Number(p.inventory) || Number(p.quantity) || 0;
-
       productMap.set(pId, {
         ...p,
         brand_name:
@@ -292,7 +281,7 @@ export async function GET(request: Request) {
                 getSafeId(s.section_id) === getSafeId(p.product_section)
             )
             ?.section_name?.toUpperCase() || "",
-        stock: stockCount,
+        stock: Number(p.stock) || Number(p.inventory) || 0,
       });
     });
 
@@ -301,7 +290,6 @@ export async function GET(request: Request) {
       salesmanMap.set(getSafeId(s.id), s.salesman_name)
     );
 
-    // CUSTOMER MAP
     const customerMap = new Map();
     customers.forEach((c: any) =>
       customerMap.set(
@@ -310,7 +298,6 @@ export async function GET(request: Request) {
       )
     );
 
-    // INVOICE LOOKUP
     const invoiceLookup = new Map();
     invoices.forEach((inv: any) =>
       invoiceLookup.set(getSafeId(inv.invoice_id), inv)
@@ -324,7 +311,6 @@ export async function GET(request: Request) {
     );
 
     // --- AGGREGATION SETUP ---
-    // Initialize stats for ALL DIVISIONS (including Internal)
     const divisionStats = new Map<string, { good: number; bad: number }>();
     ALL_DIVISIONS.forEach((div) => divisionStats.set(div, { good: 0, bad: 0 }));
 
@@ -334,19 +320,23 @@ export async function GET(request: Request) {
     const productSales = new Map<string, number>();
     const customerSales = new Map<string, number>();
 
+    // Structure: Map<SupplierName, Map<SalesmanName, TotalAmount>>
+    const supplierSalesmanMap = new Map<string, Map<string, number>>();
+
     let totalGoodStockOutflow = 0;
     let totalBadStockInflow = 0;
 
-    // --- IDENTIFICATION LOGIC ---
     const getSupplierName = (pId: string) => {
       const sId = productToSupplierMap.get(pId);
       if (sId && supplierNameMap.has(sId)) return supplierNameMap.get(sId)!;
-      // Fallback Names
       const pName = (productMap.get(pId)?.product_name || "").toUpperCase();
       if (pName.includes("MEN2")) return "MEN2 MARKETING";
-      if (pName.includes("PUREFOODS") || pName.includes("PF"))
+      if (
+        pName.includes("PUREFOODS") ||
+        pName.includes("PF") ||
+        pName.includes("CDO")
+      )
         return "FOODSPHERE INC";
-      if (pName.includes("CDO")) return "FOODSPHERE INC";
       if (pName.includes("VIRGINIA")) return "VIRGINIA FOOD INC";
       if (pName.includes("MEKENI")) return "MEKENI FOOD CORP";
       if (pName.includes("MAMA PINA")) return "MAMA PINA'S";
@@ -354,20 +344,14 @@ export async function GET(request: Request) {
     };
 
     const getTransactionDivision = (pId: string, invoiceId: string) => {
-      // 1. PRIORITY: Check Customer Name for Internal Keywords
-      // Ito ang "Abang" logic. Kung may makitang keyword sa customer name, Internal agad.
       const inv = invoiceLookup.get(invoiceId);
       if (inv) {
         const custName = customerMap.get(String(inv.customer_code)) || "";
-        if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k))) {
+        if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k)))
           return "Internal";
-        }
       }
-
-      // 2. SECONDARY: Check Product Brand/Section
       const prod = productMap.get(pId);
       if (!prod) return "Dry Goods";
-
       const pBrand = (prod.brand_name || "").toUpperCase();
       const pSection = (prod.section_name || "").toUpperCase();
       const pName = (prod.product_name || "").toUpperCase();
@@ -393,12 +377,10 @@ export async function GET(request: Request) {
       return realDivision === currentTab;
     };
 
-    // Init Trend
     if (fromDate && toDate) {
-      const dates = getDatesInRange(fromDate, toDate);
-      dates.forEach((d) => {
-        if (!trendMap.has(d)) trendMap.set(d, { good: 0, bad: 0 });
-      });
+      getDatesInRange(fromDate, toDate).forEach((d) =>
+        trendMap.set(d, { good: 0, bad: 0 })
+      );
     }
 
     // --- PROCESS INVOICES ---
@@ -409,19 +391,13 @@ export async function GET(request: Request) {
       const pId = getSafeId(det.product_id);
       const qty = Number(det.quantity) || 0;
       const amt = Number(det.total_amount) || 0;
-
-      // Determine Division (Customer-First approach)
       const realDivision = getTransactionDivision(pId, invId);
 
-      // Populate Stats (Even if Transactions are 0 for Internal, the key exists)
-      if (divisionStats.has(realDivision)) {
+      if (divisionStats.has(realDivision))
         divisionStats.get(realDivision)!.good += qty;
-      }
 
-      // Populate Data for Current Tab
       if (isTabMatch(realDivision, activeTab)) {
         totalGoodStockOutflow += qty;
-
         const pName = productMap.get(pId)?.product_name || `Product ${pId}`;
         productSales.set(pName, (productSales.get(pName) || 0) + amt);
 
@@ -444,6 +420,12 @@ export async function GET(request: Request) {
             customerMap.get(String(parent.customer_code)) ||
             `Customer ${parent.customer_code}`;
           customerSales.set(cName, (customerSales.get(cName) || 0) + amt);
+
+          // Track Salesman per Supplier
+          if (!supplierSalesmanMap.has(sName))
+            supplierSalesmanMap.set(sName, new Map());
+          const smMap = supplierSalesmanMap.get(sName)!;
+          smMap.set(smName, (smMap.get(smName) || 0) + amt);
         }
       }
     });
@@ -452,11 +434,8 @@ export async function GET(request: Request) {
     returnDetails.forEach((ret: any) => {
       const retId = String(ret.return_no);
       if (!validReturnIds.has(retId)) return;
-
       const pId = getSafeId(ret.product_id);
       const qty = Number(ret.quantity) || 0;
-
-      // Fallback logic for returns (mostly Product based unless you fetch return->customer)
       const prod = productMap.get(pId);
       let realDivision = "Dry Goods";
       if (prod) {
@@ -464,11 +443,8 @@ export async function GET(request: Request) {
         const pSection = (prod.section_name || "").toUpperCase();
         for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
           const r = rules as any;
-          if (r.brands.some((b: string) => pBrand.includes(b.toUpperCase()))) {
-            realDivision = divName;
-            break;
-          }
           if (
+            r.brands.some((b: string) => pBrand.includes(b.toUpperCase())) ||
             r.sections.some((s: string) => pSection.includes(s.toUpperCase()))
           ) {
             realDivision = divName;
@@ -476,11 +452,8 @@ export async function GET(request: Request) {
           }
         }
       }
-
-      if (divisionStats.has(realDivision)) {
+      if (divisionStats.has(realDivision))
         divisionStats.get(realDivision)!.bad += qty;
-      }
-
       if (isTabMatch(realDivision, activeTab)) {
         totalBadStockInflow += qty;
         const parent = returns.find(
@@ -495,114 +468,69 @@ export async function GET(request: Request) {
       }
     });
 
-    // --- CALCULATE ---
+    // --- CALCULATE STOCK ---
     let totalCurrentStock = 0;
-    productMap.forEach((prod: any, pId: string) => {
+    productMap.forEach((prod: any) => {
       let prodDiv = "Dry Goods";
       const pBrand = (prod.brand_name || "").toUpperCase();
       const pSection = (prod.section_name || "").toUpperCase();
       for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
         const r = rules as any;
-        if (r.brands.some((b: string) => pBrand.includes(b.toUpperCase()))) {
-          prodDiv = divName;
-          break;
-        }
         if (
+          r.brands.some((b: string) => pBrand.includes(b.toUpperCase())) ||
           r.sections.some((s: string) => pSection.includes(s.toUpperCase()))
         ) {
           prodDiv = divName;
           break;
         }
       }
-      if (isTabMatch(prodDiv, activeTab)) {
-        totalCurrentStock += prod.stock || 0;
-      }
+      if (isTabMatch(prodDiv, activeTab)) totalCurrentStock += prod.stock || 0;
     });
 
     const totalMoved = totalGoodStockOutflow + totalCurrentStock;
     const velocityRate =
       totalMoved > 0 ? (totalGoodStockOutflow / totalMoved) * 100 : 0;
-
-    let velocityStatus = "Stagnant";
-    if (velocityRate > 50) velocityStatus = "Fast Moving";
-    else if (velocityRate > 20) velocityStatus = "Healthy";
-    else if (velocityRate > 5) velocityStatus = "Slow Moving";
-
     const returnRate =
       totalGoodStockOutflow > 0
         ? (totalBadStockInflow / totalGoodStockOutflow) * 100
         : 0;
-    let badStockStatus = "Normal";
-    if (returnRate > 5) badStockStatus = "Critical";
-    else if (returnRate > 2) badStockStatus = "High";
-    else if (returnRate > 0) badStockStatus = "Normal";
-    else badStockStatus = "Excellent";
 
-    // --- FORMAT RESULTS ---
-    let trendData: any[] = [];
-    if (fromDate && toDate) {
-      trendData = getDatesInRange(fromDate, toDate).map((date) => ({
+    // --- FORMAT OUTPUT ---
+    const trendData = Array.from(trendMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, vals]) => ({
         date: new Date(date).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
         }),
-        goodStockOutflow: trendMap.get(date)?.good || 0,
-        badStockInflow: trendMap.get(date)?.bad || 0,
+        goodStockOutflow: vals.good,
+        badStockInflow: vals.bad,
       }));
-    } else {
-      trendData = Array.from(trendMap.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([date, vals]) => ({
-          date: new Date(date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          }),
-          goodStockOutflow: vals.good,
-          badStockInflow: vals.bad,
-        }));
-    }
 
-    const allSupplierSales = Array.from(supplierSales.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    const supplierBreakdown = Array.from(supplierSalesmanMap.entries())
+      .map(([sName, smMap]) => {
+        const totalSales = Array.from(smMap.values()).reduce(
+          (a, b) => a + b,
+          0
+        );
+        const salesmen = Array.from(smMap.entries())
+          .map(([name, amount]) => ({
+            name,
+            amount,
+            percent:
+              totalSales > 0 ? ((amount / totalSales) * 100).toFixed(1) : "0",
+          }))
+          .sort((a, b) => b.amount - a.amount);
 
-    const salesBySupplier = allSupplierSales.slice(0, 10);
-    const salesBySalesman = Array.from(salesmanSales.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
+        return { id: sName, name: sName, totalSales, salesmen };
+      })
+      .sort((a, b) => b.totalSales - a.totalSales);
 
-    const topProducts = Array.from(productSales.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 50);
-
-    const topCustomers = Array.from(customerSales.entries())
-      // Hide Internal-tagged customers from the general Pareto list if desired, or keep them.
-      // Filtering them out to keep Pareto clean for "Real" customers:
-      .filter(
-        ([name]) =>
-          !name.toUpperCase().includes("MEN2") &&
-          !INTERNAL_CUSTOMER_KEYWORDS.some((k) => name.includes(k))
-      )
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 50);
-
-    const supplierBreakdown = allSupplierSales.map((s) => ({
-      id: s.name,
-      name: s.name,
-      totalSales: s.value,
-      salesmen: [{ name: "Total Sales", amount: s.value, percent: 100 }],
-    }));
-
-    // Ensure INTERNAL shows up here even if 0
     const divisionBreakdown = ALL_DIVISIONS.map((divName) => {
       const stats = divisionStats.get(divName) || { good: 0, bad: 0 };
       return {
         division: divName,
         goodStock: {
-          velocityRate: 0,
           totalOutflow: stats.good,
           status: stats.good > 5000 ? "Healthy" : "Warning",
         },
@@ -614,21 +542,44 @@ export async function GET(request: Request) {
       division: activeTab,
       goodStock: {
         velocityRate: Math.round(velocityRate * 100) / 100,
-        status: velocityStatus,
+        status:
+          velocityRate > 50
+            ? "Fast Moving"
+            : velocityRate > 20
+            ? "Healthy"
+            : "Slow Moving",
         totalOutflow: totalGoodStockOutflow,
         totalInflow: totalMoved,
       },
       badStock: {
         accumulated: totalBadStockInflow,
-        status: badStockStatus,
+        status: returnRate > 5 ? "Critical" : "Normal",
         totalInflow: totalBadStockInflow,
       },
       trendData,
-      salesBySupplier,
-      salesBySalesman,
+      salesBySupplier: supplierBreakdown
+        .slice(0, 10)
+        .map((s) => ({ name: s.name, value: s.totalSales })),
+      salesBySalesman: Array.from(salesmanSales.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10),
       supplierBreakdown,
       divisionBreakdown,
-      pareto: { products: topProducts, customers: topCustomers },
+      pareto: {
+        products: Array.from(productSales.entries())
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 50),
+        customers: Array.from(customerSales.entries())
+          .filter(
+            ([name]) =>
+              !INTERNAL_CUSTOMER_KEYWORDS.some((k) => name.includes(k))
+          )
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 50),
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

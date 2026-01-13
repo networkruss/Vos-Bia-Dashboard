@@ -584,47 +584,35 @@ export default function ManagerDashboard() {
             </Card>
           </div>
 
-          {/* Detailed Supplier Breakdown - REDESIGNED */}
-          <Card className="shadow-xl border-none overflow-hidden bg-white dark:bg-gray-900">
-            <div className="bg-slate-900 dark:bg-black p-6">
+          {/* Detailed Supplier Breakdown Section */}
+          <Card className="shadow-xl border-none overflow-hidden bg-white dark:bg-gray-900 border border-gray-100 dark:border-none">
+            <div className="bg-slate-50 dark:bg-black p-6 border-b border-gray-100 dark:border-gray-800">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                  <h2 className="text-xl font-black text-white flex items-center gap-2">
-                    <Briefcase className="h-5 w-5 text-blue-400" />
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     Detailed Supplier Breakdown
                   </h2>
-                  <p className="text-slate-400 text-sm font-medium">
+                  <p className="text-slate-500 dark:text-gray-400 text-sm font-medium">
                     Drilldown by partner & representative
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full md:w-auto">
-                  <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
-                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
+                  <div className="bg-white dark:bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
+                    <p className="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 mb-1 tracking-tighter">
                       Grand Total Sales
                     </p>
-                    <p className="text-lg font-black text-emerald-400 leading-none">
+                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none">
                       {formatPHP(grandTotalSales)}
                     </p>
                   </div>
-                  <div className="bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
-                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
+                  <div className="bg-white dark:bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm">
+                    <p className="text-[9px] uppercase font-black text-slate-400 dark:text-slate-500 mb-1 tracking-tighter">
                       Supplier Count
                     </p>
-                    <p className="text-lg font-black text-blue-400 leading-none">
+                    <p className="text-lg font-black text-blue-600 dark:text-blue-400 leading-none">
                       {totalSuppliers}
-                    </p>
-                  </div>
-                  <div className="hidden md:block bg-white/5 backdrop-blur-sm p-3 rounded-xl border border-white/10">
-                    <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-tighter">
-                      Avg Performance
-                    </p>
-                    <p className="text-lg font-black text-purple-400 leading-none">
-                      {formatPHP(
-                        totalSuppliers > 0
-                          ? grandTotalSales / totalSuppliers
-                          : 0
-                      )}
                     </p>
                   </div>
                 </div>
@@ -638,22 +626,22 @@ export default function ManagerDashboard() {
                 </div>
               ) : (
                 paginatedSuppliers.map((supplier: any) => {
+                  const isExpanded = expandedSupplier === supplier.id;
                   const percentOfTotal =
                     grandTotalSales > 0
                       ? (supplier.totalSales / grandTotalSales) * 100
                       : 0;
-                  const isExpanded = expandedSupplier === supplier.id;
 
                   return (
                     <div
                       key={supplier.id}
-                      className="group border-b border-gray-100 dark:border-gray-800 last:border-0"
+                      className="border-b border-gray-100 dark:border-gray-800 last:border-0"
                     >
                       <button
                         onClick={() => toggleSupplier(supplier.id)}
                         className={`w-full flex flex-col md:flex-row md:items-center justify-between p-5 transition-all ${
                           isExpanded
-                            ? "bg-blue-50/30 dark:bg-blue-900/10"
+                            ? "bg-blue-50/50 dark:bg-blue-900/10"
                             : "hover:bg-slate-50 dark:hover:bg-gray-800/40"
                         }`}
                       >
@@ -679,10 +667,10 @@ export default function ManagerDashboard() {
 
                         <div className="flex items-center justify-between md:justify-end gap-10 mt-4 md:mt-0 w-full md:w-auto">
                           <div className="text-left md:text-right">
-                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">
                               Revenue
                             </p>
-                            <p className="text-xl font-black text-slate-900 dark:text-white">
+                            <p className="text-xl font-black text-slate-900 dark:text-white leading-none">
                               {formatPHP(supplier.totalSales)}
                             </p>
                           </div>
@@ -690,7 +678,7 @@ export default function ManagerDashboard() {
                             className={`p-2 rounded-lg transition-all ${
                               isExpanded
                                 ? "bg-blue-600 text-white shadow-lg"
-                                : "bg-slate-100 dark:bg-gray-800 text-slate-400 group-hover:bg-slate-200"
+                                : "bg-slate-100 dark:bg-gray-800 text-slate-400"
                             }`}
                           >
                             {isExpanded ? (
@@ -702,44 +690,49 @@ export default function ManagerDashboard() {
                         </div>
                       </button>
 
+                      {/* Salesmen Expandable Table */}
                       {isExpanded && (
-                        <div className="bg-white dark:bg-black/40 px-6 pb-6 animate-in slide-in-from-top-4 duration-300">
-                          <div className="rounded-xl border border-slate-200 dark:border-gray-800 overflow-hidden shadow-inner">
+                        <div className="bg-slate-50/50 dark:bg-black/40 px-6 pb-6 animate-in slide-in-from-top-2 duration-300">
+                          <div className="rounded-xl border border-slate-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 shadow-inner">
                             <table className="w-full text-sm">
-                              <thead className="bg-slate-50 dark:bg-gray-900 text-slate-500 font-black text-[10px] uppercase tracking-widest">
+                              <thead className="bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-slate-400 font-black text-[10px] uppercase tracking-widest">
                                 <tr>
-                                  <th className="py-4 px-5 text-left">
-                                    Representative
+                                  <th className="py-3 px-5 text-left">
+                                    Sales Representative
                                   </th>
-                                  <th className="py-4 px-5 text-right">
+                                  <th className="py-3 px-5 text-right">
                                     Contribution
                                   </th>
-                                  <th className="py-4 px-5 text-right w-24">
+                                  <th className="py-3 px-5 text-right w-24">
                                     Share
                                   </th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
-                                {supplier.salesmen.map(
-                                  (rep: any, idx: number) => (
-                                    <tr
-                                      key={idx}
-                                      className="hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors"
-                                    >
-                                      <td className="py-4 px-5 font-bold text-slate-700 dark:text-slate-300">
-                                        {rep.name}
-                                      </td>
-                                      <td className="py-4 px-5 text-right font-black text-slate-900 dark:text-white">
-                                        {formatPHP(rep.amount)}
-                                      </td>
-                                      <td className="py-4 px-5 text-right">
-                                        <span className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-[10px] font-black text-blue-600">
-                                          {rep.percent}%
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  )
-                                )}
+                                {supplier.salesmen &&
+                                  supplier.salesmen.map(
+                                    (rep: any, idx: number) => (
+                                      <tr
+                                        key={idx}
+                                        className="hover:bg-blue-50/30 dark:hover:bg-gray-800/30 transition-colors"
+                                      >
+                                        <td className="py-4 px-5 font-bold text-slate-700 dark:text-slate-300">
+                                          <div className="flex items-center gap-2">
+                                            <Users className="h-4 w-4 text-slate-400" />
+                                            {rep.name}
+                                          </div>
+                                        </td>
+                                        <td className="py-4 px-5 text-right font-black text-slate-900 dark:text-white">
+                                          {formatPHP(rep.amount)}
+                                        </td>
+                                        <td className="py-4 px-5 text-right">
+                                          <span className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-[10px] font-black text-blue-600">
+                                            {rep.percent}%
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    )
+                                  )}
                               </tbody>
                             </table>
                           </div>
@@ -749,35 +742,35 @@ export default function ManagerDashboard() {
                   );
                 })
               )}
-
-              {totalSupplierPages > 1 && (
-                <div className="p-5 flex items-center justify-between bg-slate-50 dark:bg-gray-900 border-t dark:border-gray-800">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    Page {supplierPage} / {totalSupplierPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="font-bold px-4"
-                      onClick={() => setSupplierPage((p) => p - 1)}
-                      disabled={supplierPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="font-bold px-4"
-                      onClick={() => setSupplierPage((p) => p + 1)}
-                      disabled={supplierPage === totalSupplierPages}
-                    >
-                      Next <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </CardContent>
+
+            {totalSupplierPages > 1 && (
+              <div className="p-5 flex items-center justify-between bg-slate-50 dark:bg-gray-900 border-t dark:border-gray-800">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Page {supplierPage} / {totalSupplierPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-bold"
+                    onClick={() => setSupplierPage((p) => p - 1)}
+                    disabled={supplierPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-bold"
+                    onClick={() => setSupplierPage((p) => p + 1)}
+                    disabled={supplierPage === totalSupplierPages}
+                  >
+                    Next <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* Pareto Section */}
