@@ -94,6 +94,7 @@ const DIVISIONS = [
 
 const ITEMS_PER_PAGE = 5;
 const LIST_ITEMS_PER_PAGE = 5;
+const SALESMEN_PER_PAGE = 5; // New constant for salesman pagination
 
 const CHART_COLORS = [
   "#2563eb",
@@ -118,6 +119,10 @@ export default function ManagerDashboard() {
   const [supplierPage, setSupplierPage] = useState(1);
   const [productPage, setProductPage] = useState(1);
   const [customerPage, setCustomerPage] = useState(1);
+  // Track page for each supplier's salesman list: { supplierId: pageNumber }
+  const [salesmenPages, setSalesmenPages] = useState<Record<string, number>>(
+    {}
+  );
 
   const [timePeriod, setTimePeriod] = useState("thisMonth");
   const [date, setDate] = useState<DateRange | undefined>({
@@ -162,6 +167,7 @@ export default function ManagerDashboard() {
       setSupplierPage(1);
       setProductPage(1);
       setCustomerPage(1);
+      setSalesmenPages({}); // Reset salesman pages on new fetch
 
       try {
         const query = new URLSearchParams({
@@ -632,6 +638,25 @@ export default function ManagerDashboard() {
                       ? (supplier.totalSales / grandTotalSales) * 100
                       : 0;
 
+                  // Salesmen Pagination Logic
+                  const currentSalesmenPage = salesmenPages[supplier.id] || 1;
+                  const totalSalesmen = supplier.salesmen?.length || 0;
+                  const totalSalesmenPages = Math.ceil(
+                    totalSalesmen / SALESMEN_PER_PAGE
+                  );
+                  const paginatedSalesmen =
+                    supplier.salesmen?.slice(
+                      (currentSalesmenPage - 1) * SALESMEN_PER_PAGE,
+                      currentSalesmenPage * SALESMEN_PER_PAGE
+                    ) || [];
+
+                  const setSalesmanPage = (newPage: number) => {
+                    setSalesmenPages((prev) => ({
+                      ...prev,
+                      [supplier.id]: newPage,
+                    }));
+                  };
+
                   return (
                     <div
                       key={supplier.id}
@@ -690,7 +715,7 @@ export default function ManagerDashboard() {
                         </div>
                       </button>
 
-                      {/* Salesmen Expandable Table */}
+                      {/* Salesmen Expandable Table with Pagination */}
                       {isExpanded && (
                         <div className="bg-slate-50/50 dark:bg-black/40 px-6 pb-6 animate-in slide-in-from-top-2 duration-300">
                           <div className="rounded-xl border border-slate-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 shadow-inner">
@@ -709,32 +734,68 @@ export default function ManagerDashboard() {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
-                                {supplier.salesmen &&
-                                  supplier.salesmen.map(
-                                    (rep: any, idx: number) => (
-                                      <tr
-                                        key={idx}
-                                        className="hover:bg-blue-50/30 dark:hover:bg-gray-800/30 transition-colors"
-                                      >
-                                        <td className="py-4 px-5 font-bold text-slate-700 dark:text-slate-300">
-                                          <div className="flex items-center gap-2">
-                                            <Users className="h-4 w-4 text-slate-400" />
-                                            {rep.name}
-                                          </div>
-                                        </td>
-                                        <td className="py-4 px-5 text-right font-black text-slate-900 dark:text-white">
-                                          {formatPHP(rep.amount)}
-                                        </td>
-                                        <td className="py-4 px-5 text-right">
-                                          <span className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-[10px] font-black text-blue-600">
-                                            {rep.percent}%
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    )
-                                  )}
+                                {paginatedSalesmen.map(
+                                  (rep: any, idx: number) => (
+                                    <tr
+                                      key={idx}
+                                      className="hover:bg-blue-50/30 dark:hover:bg-gray-800/30 transition-colors"
+                                    >
+                                      <td className="py-4 px-5 font-bold text-slate-700 dark:text-slate-300">
+                                        <div className="flex items-center gap-2">
+                                          <Users className="h-4 w-4 text-slate-400" />
+                                          {rep.name}
+                                        </div>
+                                      </td>
+                                      <td className="py-4 px-5 text-right font-black text-slate-900 dark:text-white">
+                                        {formatPHP(rep.amount)}
+                                      </td>
+                                      <td className="py-4 px-5 text-right">
+                                        <span className="px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-[10px] font-black text-blue-600">
+                                          {rep.percent}%
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  )
+                                )}
                               </tbody>
                             </table>
+
+                            {/* Salesman Pagination Controls */}
+                            {totalSalesmenPages > 1 && (
+                              <div className="p-3 flex items-center justify-between bg-slate-50/50 dark:bg-gray-800/50 border-t dark:border-gray-800">
+                                <span className="text-[10px] font-bold text-slate-400">
+                                  {currentSalesmenPage} of {totalSalesmenPages}
+                                </span>
+                                <div className="flex gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-[10px] font-bold"
+                                    onClick={() =>
+                                      setSalesmanPage(currentSalesmenPage - 1)
+                                    }
+                                    disabled={currentSalesmenPage === 1}
+                                  >
+                                    <ChevronLeft className="h-3 w-3 mr-1" />{" "}
+                                    Back
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-[10px] font-bold"
+                                    onClick={() =>
+                                      setSalesmanPage(currentSalesmenPage + 1)
+                                    }
+                                    disabled={
+                                      currentSalesmenPage === totalSalesmenPages
+                                    }
+                                  >
+                                    Next{" "}
+                                    <ChevronRight className="h-3 w-3 ml-1" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -775,6 +836,7 @@ export default function ManagerDashboard() {
 
           {/* Pareto Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Products Pareto */}
             <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
               <CardHeader className="flex flex-row items-center justify-between bg-orange-50/50 dark:bg-orange-900/10">
                 <CardTitle className="text-md font-bold flex items-center gap-2">
@@ -804,33 +866,46 @@ export default function ManagerDashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="pt-4">
-                <div className="space-y-3">
-                  {paginatedProducts.map((item: any, idx: number) => (
+              <CardContent className="p-0">
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {paginatedProducts.map((item: any, i: number) => (
                     <div
-                      key={idx}
-                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
+                      key={i}
+                      className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
-                      <span className="text-gray-600 dark:text-gray-400 font-medium truncate w-2/3">
-                        <span className="text-gray-400 mr-2">
-                          {(productPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-black text-gray-300">
+                          #{(productPage - 1) * LIST_ITEMS_PER_PAGE + i + 1}
                         </span>
-                        {item.name}
-                      </span>
-                      <span className="font-black text-gray-900 dark:text-white">
-                        {formatPHP(item.value)}
-                      </span>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[200px]">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] font-medium text-gray-400">
+                            {item.category}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-gray-900 dark:text-white">
+                          {formatPHP(item.value)}
+                        </p>
+                        <p className="text-[10px] font-bold text-orange-500">
+                          {item.contribution}% contribution
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Customers Pareto */}
             <Card className="shadow-sm border-none bg-white dark:bg-gray-900">
-              <CardHeader className="flex flex-row items-center justify-between bg-yellow-50/50 dark:bg-yellow-900/10">
+              <CardHeader className="flex flex-row items-center justify-between bg-blue-50/50 dark:bg-blue-900/10">
                 <CardTitle className="text-md font-bold flex items-center gap-2">
-                  <Award className="h-4 w-4 text-yellow-500" />
-                  TOP Customers
+                  <Target className="h-4 w-4 text-blue-500" />
+                  Key Account Customers
                 </CardTitle>
                 <div className="flex gap-1">
                   <Button
@@ -857,22 +932,34 @@ export default function ManagerDashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="pt-4">
-                <div className="space-y-3">
-                  {paginatedCustomers.map((item: any, idx: number) => (
+              <CardContent className="p-0">
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {paginatedCustomers.map((item: any, i: number) => (
                     <div
-                      key={idx}
-                      className="flex justify-between items-center text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
+                      key={i}
+                      className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
-                      <span className="text-gray-600 dark:text-gray-400 font-medium truncate w-2/3">
-                        <span className="text-gray-400 mr-2">
-                          {(customerPage - 1) * LIST_ITEMS_PER_PAGE + idx + 1}
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-black text-gray-300">
+                          #{(customerPage - 1) * LIST_ITEMS_PER_PAGE + i + 1}
                         </span>
-                        {item.name}
-                      </span>
-                      <span className="font-black text-gray-900 dark:text-white">
-                        {formatPHP(item.value)}
-                      </span>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white truncate max-w-[200px]">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] font-medium text-gray-400">
+                            {item.location || "Active Account"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-black text-gray-900 dark:text-white">
+                          {formatPHP(item.value)}
+                        </p>
+                        <p className="text-[10px] font-bold text-blue-500">
+                          {item.contribution}% share
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL;
+const DIRECTUS_URL = process.env.DIRECTUS_URL || "";
+const DIRECTUS_BASE = DIRECTUS_URL.replace(/\/+$/, "");
 
 if (!DIRECTUS_URL) {
   console.error("Missing DIRECTUS_URL in .env.local");
@@ -152,7 +153,7 @@ async function fetchAll<T = any>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
-    const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
+    const url = `${DIRECTUS_BASE}/items/${endpoint}?limit=-1${params}`;
     const res = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
