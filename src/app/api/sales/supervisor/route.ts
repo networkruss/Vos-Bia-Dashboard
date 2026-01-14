@@ -20,122 +20,183 @@ export async function GET(request: Request) {
     const fromDate = searchParams.get("fromDate");
     const toDate = searchParams.get("toDate");
 
+    if (!fromDate || !toDate) {
+      return NextResponse.json(
+        { success: false, error: "Missing date parameters" },
+        { status: 400 }
+      );
+    }
+
     const [
       salesmen,
       invoices,
+      invoiceDetails,
       returns,
       customers,
-      storeTypes,
       products,
-      targets,
-      suppliers,
+      rtsData,
+      storeTypes,
     ] = await Promise.all([
       fetchAll("salesman", "&fields=id,salesman_name,isActive"),
       fetchAll(
         "sales_invoice",
-        `&fields=total_amount,invoice_date,salesman_id,product_id,quantity&filter[invoice_date][_between]=[${fromDate},${toDate}]`
+        `&fields=invoice_id,total_amount,discount_amount,net_amount,salesman_id,customer_code&filter[invoice_date][_between]=[${fromDate},${toDate}]`
+      ),
+      fetchAll(
+        "sales_invoice_details",
+        "&fields=invoice_no,product_id,quantity,total_amount"
       ),
       fetchAll(
         "sales_return",
-        `&fields=total_amount,return_date,salesman_id&filter[return_date][_between]=[${fromDate},${toDate}]`
+        `&fields=total_amount,return_date&filter[return_date][_between]=[${fromDate},${toDate}]`
       ),
-      fetchAll("customer", "&fields=id,store_type"),
-      fetchAll("store_type", "&fields=id,store_type"),
-      fetchAll("products", "&fields=product_id,product_name"),
+      fetchAll("customer", "&fields=id,customer_code,store_type"),
+      fetchAll("products", "&fields=product_id,product_name,isActive"),
       fetchAll(
-        "salesman_target_setting",
-        `&fields=salesman_id,line_sales,volume&filter[date_range_from][_lte]=${toDate}&filter[date_range_to][_gte]=${fromDate}`
+        "return_to_supplier",
+        `&fields=supplier_id&filter[transaction_date][_between]=[${fromDate},${toDate}]`
       ),
-      fetchAll("suppliers", "&fields=id,supplier_name"),
+      fetchAll("store_type", "&fields=id,store_type"),
     ]);
 
-    // 1. Map Targets per Salesman (Source: salesman_target_setting)
-    const targetMap = new Map();
-    targets.forEach((t: any) => {
-      if (t.salesman_id) {
-        // Ginagamit ang 'line_sales' bilang target amount
-        targetMap.set(String(t.salesman_id), Number(t.line_sales) || 0);
+    const activeSalesmenSet = new Set();
+    const activeProductsSet = new Set();
+    const invoicedCustomerCodes = new Set();
+    const activeSuppliersSet = new Set();
+
+    const salesmanSalesMap = new Map();
+    const productVolumeMap = new Map();
+
+    let totalNetSales = 0;
+    let totalDiscounts = 0;
+
+    // 1. Process Invoices & Salesmen
+    invoices.forEach((inv: any) => {
+      totalNetSales += Number(inv.net_amount) || 0;
+      totalDiscounts += Number(inv.discount_amount) || 0;
+
+      if (inv.customer_code) invoicedCustomerCodes.add(inv.customer_code);
+
+      if (inv.salesman_id) {
+        // LIVE READY: Check if salesman_id is an object or a simple ID
+        const sId =
+          typeof inv.salesman_id === "object"
+            ? String(inv.salesman_id.id)
+            : String(inv.salesman_id);
+        activeSalesmenSet.add(sId);
+        salesmanSalesMap.set(
+          sId,
+          (salesmanSalesMap.get(sId) || 0) + (Number(inv.net_amount) || 0)
+        );
       }
     });
 
-    // 2. Calculate Total Returns per Salesman
-    const salesmanReturnsMap = new Map();
-    let globalTotalReturns = 0;
-    returns.forEach((ret: any) => {
-      const returnAmt = Number(ret.total_amount) || 0;
-      globalTotalReturns += returnAmt;
-      const current = salesmanReturnsMap.get(String(ret.salesman_id)) || 0;
-      salesmanReturnsMap.set(String(ret.salesman_id), current + returnAmt);
+    // 2. Process Suppliers (Returns-based)
+    rtsData.forEach((rts: any) => {
+      if (rts.supplier_id) {
+        // LIVE READY: Directus often returns objects for foreign keys
+        const suppId =
+          typeof rts.supplier_id === "object"
+            ? String(rts.supplier_id.id)
+            : String(rts.supplier_id);
+        activeSuppliersSet.add(suppId);
+      }
     });
 
-    // 3. Calculate Gross Sales
-    const salesmanSalesMap = new Map();
-    let globalTotalGrossSales = 0;
+    // 3. Process Product Volumes
+    const detailsMap = new Map();
+    invoiceDetails.forEach((det: any) => {
+      const invNo = String(det.invoice_no);
+      if (!detailsMap.has(invNo)) detailsMap.set(invNo, []);
+      detailsMap.get(invNo).push(det);
+    });
+
     invoices.forEach((inv: any) => {
-      const saleAmt = Number(inv.total_amount) || 0;
-      globalTotalGrossSales += saleAmt;
-      const current = salesmanSalesMap.get(String(inv.salesman_id)) || 0;
-      salesmanSalesMap.set(String(inv.salesman_id), current + saleAmt);
-    });
-
-    // 4. Salesman Ranking with REAL Achievement %
-    const salesmanRanking = salesmen
-      .filter((s: any) => s.isActive === 1)
-      .map((s: any) => {
-        const gross = salesmanSalesMap.get(String(s.id)) || 0;
-        const returned = salesmanReturnsMap.get(String(s.id)) || 0;
-        const netSales = gross - returned;
-        const targetAmount = targetMap.get(String(s.id)) || 0;
-
-        let achievementRate = "No Target";
-        if (targetAmount > 0) {
-          // Achievement Rate = (Net Sales / line_sales) * 100
-          achievementRate = `${((netSales / targetAmount) * 100).toFixed(
-            0
-          )}% Target`;
+      const relatedDetails = detailsMap.get(String(inv.invoice_id)) || [];
+      relatedDetails.forEach((det: any) => {
+        if (det.product_id) {
+          const pId = String(det.product_id);
+          activeProductsSet.add(pId);
+          productVolumeMap.set(
+            pId,
+            (productVolumeMap.get(pId) || 0) + (Number(det.quantity) || 0)
+          );
         }
-
-        return {
-          name: s.salesman_name,
-          amount: netSales,
-          target: achievementRate,
-        };
-      })
-      .sort((a: any, b: any) => b.amount - a.amount)
-      .slice(0, 5);
-
-    // 5. Top Products with Units (Base sa Quantity)
-    const productVolumeMap = new Map();
-    invoices.forEach((inv: any) => {
-      const qty = Number(inv.quantity) || 0;
-      const current = productVolumeMap.get(String(inv.product_id)) || 0;
-      productVolumeMap.set(String(inv.product_id), current + qty);
+      });
     });
 
-    const topProducts = products
-      .map((p: any) => ({
-        name: p.product_name,
-        cases: productVolumeMap.get(String(p.product_id)) || 0, // Ito ang magiging 'Units' sa UI
-      }))
-      .sort((a: any, b: any) => b.cases - a.cases)
-      .slice(0, 5);
+    // 4. Coverage Metrics
+    const sariSariIds = storeTypes
+      .filter((st: any) => st.store_type?.toLowerCase().includes("sari"))
+      .map((st: any) => st.id);
+    const restoIds = storeTypes
+      .filter(
+        (st: any) =>
+          st.store_type?.toLowerCase().includes("resto") ||
+          st.store_type?.toLowerCase().includes("restaurant")
+      )
+      .map((st: any) => st.id);
 
-    // 6. Global Stats
+    const sariSariCustomers = customers.filter((c: any) =>
+      sariSariIds.includes(c.store_type)
+    );
+    const restoCustomers = customers.filter((c: any) =>
+      restoIds.includes(c.store_type)
+    );
+
+    const sariInvoiced = sariSariCustomers.filter((c: any) =>
+      invoicedCustomerCodes.has(c.customer_code)
+    ).length;
+    const restoInvoiced = restoCustomers.filter((c: any) =>
+      invoicedCustomerCodes.has(c.customer_code)
+    ).length;
+
+    const totalReturnAmt = returns.reduce(
+      (acc: number, curr: any) => acc + (Number(curr.total_amount) || 0),
+      0
+    );
     const returnRate =
-      globalTotalGrossSales > 0
-        ? ((globalTotalReturns / globalTotalGrossSales) * 100).toFixed(2)
+      totalNetSales > 0
+        ? (((totalReturnAmt + totalDiscounts) / totalNetSales) * 100).toFixed(2)
         : "0.00";
 
     return NextResponse.json({
       success: true,
       data: {
-        activeSalesmen: salesmen.filter((s: any) => s.isActive === 1).length,
-        topProductsCount: products.length,
-        suppliersCount: suppliers.length,
-        returnRate: Number(returnRate),
-        strikeRate: invoices.length > 0 ? 68.5 : 0,
-        salesmanRanking,
-        topProducts,
+        activeSalesmen: activeSalesmenSet.size,
+        topProductsCount: activeProductsSet.size,
+        suppliersCount: activeSuppliersSet.size,
+        returnRate,
+        strikeRate:
+          customers.length > 0
+            ? ((invoicedCustomerCodes.size / customers.length) * 100).toFixed(1)
+            : "0.0",
+        coverage: {
+          sariPercent:
+            sariSariCustomers.length > 0
+              ? Math.round((sariInvoiced / sariSariCustomers.length) * 100)
+              : 0,
+          restoPercent:
+            restoCustomers.length > 0
+              ? Math.round((restoInvoiced / restoCustomers.length) * 100)
+              : 0,
+        },
+        salesmanRanking: salesmen
+          .filter((s: any) => s.isActive === 1)
+          .map((s: any) => ({
+            name: s.salesman_name,
+            amount: salesmanSalesMap.get(String(s.id)) || 0,
+          }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 5),
+        topProducts: products
+          .filter((p: any) => p.isActive === 1)
+          .map((p: any) => ({
+            name: p.product_name,
+            cases: productVolumeMap.get(String(p.product_id)) || 0,
+          }))
+          .sort((a, b) => b.cases - a.cases)
+          .slice(0, 5),
       },
     });
   } catch (error: any) {
