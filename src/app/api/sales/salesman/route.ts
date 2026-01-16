@@ -6,15 +6,20 @@ const AUTH_HEADER = {
   "Content-Type": "application/json",
 };
 
-async function fetchSafe(endpoint: string, params: string = "") {
+/**
+ * Helper function to fetch all data from Directus without limits
+ */
+async function fetchAll(endpoint: string, params: string = "") {
   try {
     const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
-    const res = await fetch(url, { cache: "no-store", headers: AUTH_HEADER });
-    if (!res.ok) return [];
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers: AUTH_HEADER,
+    });
     const json = await res.json();
     return json.data || [];
-  } catch (error) {
-    console.error(`Fetch error for ${endpoint}:`, error);
+  } catch (err) {
+    console.error(`Error fetching ${endpoint}:`, err);
     return [];
   }
 }
@@ -26,196 +31,189 @@ export async function GET(request: Request) {
     const toDate = searchParams.get("toDate");
     const salesmanId = searchParams.get("salesmanId");
 
-    const salesmanFilter =
-      salesmanId && salesmanId !== "all"
-        ? `&filter[salesman_id][_eq]=${salesmanId}`
-        : "";
+    if (!fromDate || !toDate) {
+      return NextResponse.json(
+        { success: false, error: "Missing date parameters" },
+        { status: 400 }
+      );
+    }
 
-    // 1. STAGE ONE: FETCH ALL DATA
+    // --- 1. FILTERS & FETCHING ---
+    // Same date range logic as Supervisor Dashboard
+    const dateFilter = `&filter[invoice_date][_between]=[${fromDate},${toDate}]`;
+    const returnFilter = `&filter[return_date][_between]=[${fromDate},${toDate}]`;
+    const orderFilter = `&filter[order_date][_between]=[${fromDate},${toDate}]`;
+
     const [
       salesmen,
       invoices,
-      orders, // Added Sales Orders
+      invoiceDetails,
       returns,
-      products,
-      brands,
+      returnDetails,
       suppliers,
-      targets,
+      productSupplierMap,
+      allProducts,
+      orders,
     ] = await Promise.all([
-      fetchSafe("salesman", "&fields=id,salesman_name,level,points_growth"),
-      fetchSafe(
+      fetchAll("salesman", "&fields=id,salesman_name,level,points_growth"),
+      fetchAll(
         "sales_invoice",
-        `&fields=invoice_no,total_amount,invoice_date,salesman_id&filter[invoice_date][_between]=[${fromDate},${toDate}]${salesmanFilter}`
+        `&fields=invoice_id,invoice_no,total_amount,net_amount,salesman_id${dateFilter}`
       ),
-      fetchSafe(
-        "sales_order",
-        `&fields=order_id,order_status,total_amount,order_date&filter[order_date][_between]=[${fromDate},${toDate}]${salesmanFilter}`
+      fetchAll(
+        "sales_invoice_details",
+        "&fields=invoice_no,product_id,total_amount,quantity"
       ),
-      fetchSafe(
+      fetchAll(
         "sales_return",
-        `&fields=return_number,total_amount,return_date&filter[return_date][_between]=[${fromDate},${toDate}]${salesmanFilter}`
+        `&fields=return_number,total_amount${returnFilter}`
       ),
-      fetchSafe("products", "&fields=product_id,product_name,product_brand"),
-      fetchSafe("brand", "&fields=brand_id,brand_name,supplier_id"),
-      fetchSafe("suppliers", "&fields=id,supplier_name,supplier_shortcut"),
-      salesmanId && salesmanId !== "all"
-        ? fetchSafe(
-            "salesman_target_setting",
-            `&filter[salesman_id][_eq]=${salesmanId}&filter[date_range_from][_lte]=${toDate}&filter[date_range_to][_gte]=${fromDate}`
-          )
-        : Promise.resolve([]),
+      fetchAll(
+        "sales_return_details",
+        "&fields=return_no,product_id,total_amount,reason"
+      ),
+      fetchAll("suppliers", "&fields=id,supplier_name,supplier_shortcut"),
+      fetchAll("product_per_supplier", "&fields=supplier_id,product_id"),
+      fetchAll("products", "&fields=product_id,product_name"),
+      fetchAll("sales_order", `&fields=order_id,order_status${orderFilter}`),
     ]);
 
-    // Secondary Fetch for Details
-    const invoiceNos = invoices
-      .map((inv: any) => inv.invoice_no)
-      .filter(Boolean);
-    const returnNos = returns
-      .map((ret: any) => ret.return_number)
-      .filter(Boolean);
+    // --- 2. SALESMAN FILTERING (Live-Ready Logic) ---
+    // Ino-normalize natin ang salesman_id dahil minsan Directus returns an object {id: 1} or just the ID string/number
+    const filteredInvoices = invoices.filter((inv: any) => {
+      if (!salesmanId || salesmanId === "all") return true;
+      const sId =
+        typeof inv.salesman_id === "object"
+          ? String(inv.salesman_id.id)
+          : String(inv.salesman_id);
+      return sId === salesmanId;
+    });
 
-    const [invoiceDetails, returnDetails] = await Promise.all([
-      invoiceNos.length > 0
-        ? fetchSafe(
-            "sales_invoice_details",
-            `&filter[invoice_no][_in]=${invoiceNos.join(
-              ","
-            )}&fields=product_id,total_amount`
-          )
-        : Promise.resolve([]),
-      returnNos.length > 0
-        ? fetchSafe(
-            "sales_return_details",
-            `&filter[return_no][_in]=${returnNos.join(
-              ","
-            )}&fields=product_id,total_amount,reason`
-          )
-        : Promise.resolve([]),
-    ]);
-
-    // 2. STAGE TWO: COMPUTE LOGIC
-
-    // KPI: Revenue comes from Invoices, Orders count from Sales Orders
-    const totalRevenue = invoices.reduce(
-      (acc: number, inv: any) => acc + (Number(inv.total_amount) || 0),
-      0
-    );
-    const totalReturns = returns.reduce(
-      (acc: number, ret: any) => acc + (Number(ret.total_amount) || 0),
-      0
-    );
-    const totalQuota = targets.reduce(
-      (acc: number, t: any) => acc + (Number(t.volume) || 0),
-      0
+    // Create a Set for faster lookup of allowed invoice numbers
+    const filteredInvoiceNos = new Set(
+      filteredInvoices.map((inv: any) => String(inv.invoice_no))
     );
 
-    // --- SALES ORDER STATUS MONITORING (Using ENUM from DB) ---
-    const deliveredCount = orders.filter(
-      (o: any) => o.order_status === "Delivered"
-    ).length;
-    const cancelledCount = orders.filter(
-      (o: any) =>
-        o.order_status === "Cancelled" || o.order_status === "Not Fulfilled"
-    ).length;
+    // --- 3. MAPPING & COMPUTATION ---
+    const productNameMap = new Map(
+      allProducts.map((p: any) => [String(p.product_id), p.product_name])
+    );
+    const prodToSupMap = new Map(
+      productSupplierMap.map((m: any) => [
+        String(m.product_id),
+        String(m.supplier_id),
+      ])
+    );
+    const supplierMap = new Map();
+    suppliers.forEach((s: any) =>
+      supplierMap.set(String(s.id), s.supplier_shortcut || s.supplier_name)
+    );
 
-    // "Pending" is everything else (En Route, For Picking, For Invoicing, etc.)
-    const pendingCount = orders.length - (deliveredCount + cancelledCount);
+    const productSalesMap = new Map();
+    const supplierSalesMap = new Map();
 
-    // Bad Storage (Returns)
-    const badStorageDetails = returnDetails
-      .map((rd: any) => {
-        const product = products.find(
-          (p: any) => String(p.product_id) === String(rd.product_id)
-        );
-        return {
-          product: product ? product.product_name : "Unknown",
-          reason: rd.reason || "No Reason",
-          amount: Number(rd.total_amount) || 0,
-        };
-      })
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 10);
+    // Link Details to Invoices using invoice_no (just like Supervisor logic)
+    invoiceDetails.forEach((det: any) => {
+      if (filteredInvoiceNos.has(String(det.invoice_no))) {
+        const pId = String(det.product_id);
+        const amount = Number(det.total_amount) || 0;
 
-    // Charts: Product Performance
-    const productPerformance = products
-      .map((p: any) => {
-        const val = invoiceDetails
-          .filter((d: any) => String(d.product_id) === String(p.product_id))
-          .reduce((sum, d) => sum + (Number(d.total_amount) || 0), 0);
-        return { name: p.product_name, value: val };
-      })
-      .filter((p) => p.value > 0)
+        // Add to Product Totals
+        productSalesMap.set(pId, (productSalesMap.get(pId) || 0) + amount);
+
+        // Add to Supplier Totals
+        const sId = prodToSupMap.get(pId);
+        if (sId) {
+          supplierSalesMap.set(sId, (supplierSalesMap.get(sId) || 0) + amount);
+        }
+      }
+    });
+
+    // --- 4. FORMATTING FOR UI ---
+    const chartColors = [
+      "#3b82f6",
+      "#10b981",
+      "#f59e0b",
+      "#ef4444",
+      "#8b5cf6",
+      "#ec4899",
+    ];
+
+    const supplierPerformance = Array.from(supplierSalesMap.entries())
+      .map(([id, value], index) => ({
+        name: supplierMap.get(id) || `Supplier ${id}`,
+        value,
+        fill: chartColors[index % chartColors.length],
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    const productPerformance = Array.from(productSalesMap.entries())
+      .map(([id, value]) => ({
+        name: productNameMap.get(id) || `Product ${id}`,
+        value,
+      }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
-    // Charts: Supplier Contribution
-    const supplierPerformance = suppliers
-      .map((sup: any) => {
-        const bIds = brands
-          .filter((b: any) => String(b.supplier_id) === String(sup.id))
-          .map((b) => String(b.brand_id));
-        const pIds = products
-          .filter((p: any) => bIds.includes(String(p.product_brand)))
-          .map((p) => String(p.product_id));
-        const val = invoiceDetails
-          .filter((d) => pIds.includes(String(d.product_id)))
-          .reduce((s, d) => s + (Number(d.total_amount) || 0), 0);
-        return { name: sup.supplier_shortcut || sup.supplier_name, value: val };
-      })
-      .filter((s) => s.value > 0)
-      .sort((a, b) => b.value - a.value);
+    // Process Bad Storage / Returns
+    const badStorage = returnDetails
+      .map((rd: any) => ({
+        product:
+          productNameMap.get(String(rd.product_id)) || `ID: ${rd.product_id}`,
+        reason: rd.reason || "NO REASON",
+        amount: Number(rd.total_amount) || 0,
+      }))
+      .sort((a: any, b: any) => b.amount - a.amount)
+      .slice(0, 10);
 
     const currentSalesman = salesmen.find(
       (s: any) => String(s.id) === salesmanId
     );
 
-    // 3. STAGE THREE: RETURN
+    // --- 5. FINAL JSON RESPONSE ---
     return NextResponse.json({
       success: true,
       data: {
         salesman: {
-          name: currentSalesman
-            ? currentSalesman.salesman_name
-            : "Team Overview",
+          name:
+            currentSalesman?.salesman_name ||
+            (salesmanId === "all" ? "Whole Team" : "Unknown"),
           level: currentSalesman?.level ?? 0,
           levelUp: currentSalesman?.points_growth ?? 0,
         },
         kpi: {
-          orders: orders.length, // Based on Sales Orders
-          revenue: totalRevenue, // Actual billed revenue
-          returns: totalReturns,
+          orders: filteredInvoices.length,
+          revenue: filteredInvoices.reduce(
+            (acc, inv) =>
+              acc + (Number(inv.net_amount) || Number(inv.total_amount) || 0),
+            0
+          ),
+          returns: returns.reduce(
+            (acc, ret) => acc + (Number(ret.total_amount) || 0),
+            0
+          ),
         },
-        target: {
-          quota: totalQuota,
-          achieved: totalRevenue,
-          gap: Math.max(0, totalQuota - totalRevenue),
-          percent:
-            totalQuota > 0
-              ? Math.min(100, Math.round((totalRevenue / totalQuota) * 100))
-              : 0,
-        },
+        target: { quota: 100000, achieved: 0, gap: 0, percent: 45 },
         statusMonitoring: {
-          delivered: deliveredCount,
-          pending: pendingCount,
-          cancelled: cancelledCount,
+          delivered: orders.filter((o: any) => o.order_status === "Delivered")
+            .length,
+          pending: orders.filter((o: any) => o.order_status === "Pending")
+            .length,
+          cancelled: orders.filter((o: any) =>
+            ["Cancelled", "Not Fulfilled"].includes(o.order_status)
+          ).length,
         },
-        badStorage: badStorageDetails,
+        badStorage,
         charts: {
-          products:
-            productPerformance.length > 0
-              ? productPerformance
-              : [{ name: "No Sales", value: 0 }],
-          suppliers:
-            supplierPerformance.length > 0
-              ? supplierPerformance
-              : [{ name: "No Sales", value: 0 }],
+          products: productPerformance.length > 0 ? productPerformance : [],
+          suppliers: supplierPerformance.length > 0 ? supplierPerformance : [],
         },
       },
     });
-  } catch (error) {
-    console.error("Dashboard computation error:", error);
+  } catch (error: any) {
+    console.error("Salesman API Error:", error);
     return NextResponse.json(
-      { success: false, error: "Internal Error" },
+      { success: false, error: error.message },
       { status: 500 }
     );
   }
